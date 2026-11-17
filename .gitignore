@@ -1,0 +1,9 @@
+build/
+*.elf
+*.map
+__pycache__/
+docs/firmware/
+build-devkit/
+docs/manifest.json
+docs/manifest-devkit.json
+docs/version.json

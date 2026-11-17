@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GateMaster</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#1d2330;--muted:#677084;--line:#dfe2e8;--acc:#2563eb;--acc-ink:#fff;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--soft:#eef2ff;--r:10px}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1b1f27;--ink:#e6e9ef;--muted:#9aa3b5;--line:#2c323d;--acc:#4f8cff;--soft:#1f2a44}}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:12px 16px;display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;font-weight:650}
+header .sub{color:var(--muted);font-size:13px}
+.pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:13px;font-weight:600;background:var(--soft);color:var(--acc)}
+.pill.closed{background:#dcfce7;color:#166534}.pill.open,.pill.partial{background:#fef3c7;color:#92400e}
+.pill.lockout,.pill.bad{background:#fee2e2;color:#991b1b}.pill.unknown,.pill.stopped{background:#e5e7eb;color:#374151}
+@media(prefers-color-scheme:dark){.pill.closed{background:#14532d;color:#bbf7d0}.pill.open,.pill.partial{background:#78350f;color:#fde68a}.pill.lockout,.pill.bad{background:#7f1d1d;color:#fecaca}.pill.unknown,.pill.stopped{background:#374151;color:#e5e7eb}}
+nav{display:flex;gap:4px;padding:8px 12px 0;max-width:1100px;margin:0 auto;overflow-x:auto}
+nav button{border:0;background:none;color:var(--muted);padding:10px 14px;font:inherit;font-weight:600;border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+nav button.on{color:var(--ink);border-color:var(--acc)}
+main{max-width:1100px;margin:0 auto;padding:12px}
+section{display:none}section.on{display:block}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
+.card h2{font-size:15px;margin:0 0 10px;font-weight:650}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px}
+.kv div:nth-child(odd){color:var(--muted)}
+.kv .v{font-variant-numeric:tabular-nums}
+label.f{display:block;margin:8px 0 3px;font-size:13px;color:var(--muted)}
+input[type=text],input[type=password],input[type=number],select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=number]{max-width:130px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+button.b{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:8px 14px;border-radius:8px;font:inherit;font-weight:600;cursor:pointer}
+button.b:hover{border-color:var(--acc)}
+button.p{background:var(--acc);border-color:var(--acc);color:var(--acc-ink)}
+button.d{color:var(--bad)}
+button:disabled{opacity:.5;cursor:default}
+.big{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.big button{padding:22px 8px;font-size:18px;border-radius:12px}
+.big .stop{background:var(--bad);border-color:var(--bad);color:#fff}
+.sw{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.sw:first-of-type{border-top:0}
+.sw small{display:block;color:var(--muted)}
+.tog{position:relative;display:inline-block;width:48px;height:28px;flex:none;vertical-align:middle}
+.tog input{opacity:0;width:0;height:0}
+.tog span{position:absolute;inset:0;background:#9ca3af;border-radius:99px;transition:.2s;cursor:pointer}
+.tog span:before{content:"";position:absolute;width:22px;height:22px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s}
+.tog input:checked+span{background:var(--acc)}.tog input:checked+span:before{transform:translateX(20px)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td,th{padding:5px 6px;border-top:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:12px;border-top:0}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#9ca3af;margin-right:6px;vertical-align:middle}
+.dot.on{background:var(--warn)}.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}
+.muted{color:var(--muted)}.small{font-size:12.5px}.err{color:var(--bad);font-size:13px;min-height:1em;margin-top:6px}
+.prm td:first-child{width:45%}
+.prm .def{font-size:12px;color:var(--muted)}
+.bar{height:10px;background:var(--line);border-radius:99px;overflow:hidden}.bar>div{height:100%;background:var(--acc);width:0}
+canvas{width:100%;height:220px;display:block}
+.log{max-height:360px;overflow:auto;font-size:13px}
+.log div{padding:3px 0;border-top:1px solid var(--line);display:flex;gap:10px}.log time{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:10px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;max-width:90vw;z-index:9}
+#toast.show{opacity:.95}#toast.bad{background:#991b1b}
+.track{position:relative;height:56px;background:var(--bg);border:1px solid var(--line);border-radius:8px;margin:6px 0 14px}
+.track .gate{position:absolute;top:8px;height:38px;width:36%;background:repeating-linear-gradient(90deg,var(--acc) 0 4px,transparent 4px 12px);border:2px solid var(--acc);border-radius:4px;transition:left .2s linear}
+.track .obs{position:absolute;top:2px;bottom:2px;width:4px;background:var(--bad);border-radius:2px}
+.track .post{position:absolute;top:0;bottom:0;width:6px;background:var(--muted);left:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button.on{background:var(--warn);border-color:var(--warn);color:#fff}
+.center{max-width:430px;margin:40px auto}
+.hide{display:none!important}
+.warnbox{background:#fef3c7;color:#78350f;border-radius:8px;padding:8px 10px;font-size:13px;margin:8px 0}
+@media(prefers-color-scheme:dark){.warnbox{background:#422006;color:#fde68a}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="hName">GateMaster</h1>
+  <span class="pill" id="hState">…</span>
+  <span class="sub" id="hSub"></span>
+</header>
+
+<!-- setup network: Wi-Fi only -->
+<div id="vSetup" class="hide center card">
+  <h2>Connect GateMaster to your Wi-Fi</h2>
+  <p class="muted small">Choose your home network and enter its password. The board then joins it and closes this setup network.</p>
+  <label class="f">Network</label>
+  <div class="row"><select id="sSsid" style="flex:1"><option value="">Scanning…</option></select><button class="b" onclick="scan()">Rescan</button></div>
+  <label class="f">or type the name</label><input type="text" id="sSsidT" autocomplete="off">
+  <label class="f">Password</label><input type="password" id="sPass">
+  <p><button class="b p" onclick="setupSave()">Connect</button></p>
+  <div class="err" id="sErr"></div>
+  <p class="muted small">Afterwards, open <b id="sHost"></b> from a computer on your home network.</p>
+</div>
+
+<!-- first visit: set the password -->
+<div id="vPass" class="hide center card">
+  <h2>Set a password for this gate</h2>
+  <p class="muted small">Everyone who opens this page or uses the API needs it. At least 8 characters. Your browser will then ask for it (user name: <b>admin</b>).</p>
+  <label class="f">Password</label><input type="password" id="p1" autocomplete="new-password">
+  <label class="f">Repeat</label><input type="password" id="p2" autocomplete="new-password">
+  <p><button class="b p" onclick="firstPass()">Save password</button></p>
+  <div class="err" id="pErr"></div>
+</div>
+
+<div id="vApp" class="hide">
+<nav id="tabs">
+  <button data-t="controls" class="on">Controls</button>
+  <button data-t="status">Status</button>
+  <button data-t="params">Parameters</button>
+  <button data-t="general">General</button>
+  <button data-t="sim" class="hide" id="tabSim">Simulator</button>
+</nav>
+<main>
+
+<!-- ============================== Controls ============================== -->
+<section id="t-controls" class="on">
+<div class="grid">
+  <div class="card">
+    <h2>Gate</h2>
+    <div class="row" style="margin-bottom:10px"><span class="pill" id="cState">…</span><span class="muted" id="cPos"></span></div>
+    <div class="bar" style="margin-bottom:14px"><div id="cBar"></div></div>
+    <div class="big">
+      <button class="b p" onclick="cmd('open')">Open</button>
+      <button class="b stop" onclick="cmd('stop')">Stop</button>
+      <button class="b p" onclick="cmd('close')">Close</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="b" onclick="cmd('partial')">Partial open</button>
+      <button class="b" onclick="cmd('reset')">Reset alarm</button>
+    </div>
+    <div class="err" id="cMsg"></div>
+  </div>
+  <div class="card">
+    <h2>Modes</h2>
+    <div class="sw"><div>Hold open<small>Opens and stays open until turned off. Survives a power cut.</small></div>
+      <label class="tog"><input type="checkbox" id="mHold" onchange="cmd(this.checked?'hold_on':'hold_off')"><span></span></label></div>
+    <div class="sw"><div>Auto-close<small>Closes by itself after the close delay.</small></div>
+      <label class="tog"><input type="checkbox" id="mAc" onchange="cmd(this.checked?'autoclose_on':'autoclose_off')"><span></span></label></div>
+    <div class="sw"><div>Lock out<small>EXIT and radio ignored. Buttons, web and MQTT still work.</small></div>
+      <label class="tog"><input type="checkbox" id="mLock" onchange="cmd(this.checked?'lockout_on':'lockout_off')"><span></span></label></div>
+    <div class="kv" style="margin-top:10px"><div>Auto-close in</div><div class="v" id="cAc">–</div><div>Photo-eye</div><div class="v" id="cEye">–</div><div>Safety edge</div><div class="v" id="cEdge">–</div><div>Faults</div><div class="v" id="cFault">none</div></div>
+  </div>
+</div>
+</section>
+
+<!-- ============================== Status ============================== -->
+<section id="t-status">
+<div class="grid">
+  <div class="card"><h2>Gate</h2><div class="kv" id="sGate"></div></div>
+  <div class="card"><h2>Motor</h2><div class="kv" id="sMotor"></div></div>
+  <div class="card" style="grid-column:1/-1">
+    <h2>Motor current</h2>
+    <canvas id="graph"></canvas>
+    <div class="small muted">Blue: this run · grey: the run before · red dashed: obstruction threshold. 10 samples per second.</div>
+  </div>
+  <div class="card"><h2>Inputs</h2><table id="sInputs"><tr><th>Input</th><th>State</th><th>Contact</th></tr></table></div>
+  <div class="card"><h2>Limits &amp; outputs</h2><div class="kv" id="sLim"></div><h2 style="margin-top:14px">Faults</h2><div class="kv" id="sFaults"></div></div>
+  <div class="card"><h2>Counters &amp; learned</h2><div class="kv" id="sCount"></div><h2 style="margin-top:14px">Device</h2><div class="kv" id="sDev"></div></div>
+  <div class="card" style="grid-column:1/-1">
+    <div class="row" style="justify-content:space-between"><h2>Event log</h2><a class="b small" href="/api/log.txt" download style="text-decoration:none;padding:6px 10px;border:1px solid var(--line);border-radius:8px;color:var(--ink)">Download</a></div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+</section>
+
+<!-- ============================== Parameters ============================== -->
+<section id="t-params"><div class="grid" id="pGroups"></div></section>
+
+<!-- ============================== General ============================== -->
+<section id="t-general">
+<div class="grid">
+  <div class="card">
+    <h2>Device</h2>
+    <label class="f">Name</label><input type="text" id="gName" maxlength="32">
+    <div class="kv" style="margin-top:10px"><div>Address</div><div class="v"><a id="gHost" href="#"></a></div><div>IP address</div><div class="v" id="gIp"></div><div>MAC</div><div class="v" id="gMac"></div><div>Wi-Fi</div><div class="v" id="gWifi"></div></div>
+    <p><button class="b p" onclick="save({name:val('gName')},'gErr1')">Save</button></p><div class="err" id="gErr1"></div>
+  </div>
+  <div class="card">
+    <h2>Password</h2>
+    <p class="muted small">For this page, the API and Arduino IDE uploads. User name: admin.</p>
+    <label class="f">New password</label><input type="password" id="gP1" autocomplete="new-password">
+    <label class="f">Repeat</label><input type="password" id="gP2" autocomplete="new-password">
+    <p><button class="b p" onclick="changePass()">Change password</button></p><div class="err" id="gErr2"></div>
+  </div>
+  <div class="card">
+    <h2>Wi-Fi</h2>
+    <label class="f">Network</label><div class="row"><input type="text" id="gSsid" style="flex:1" list="ssids"><button class="b" onclick="scan('ssids')">Scan</button></div>
+    <datalist id="ssids"></datalist>
+    <label class="f">Password</label><input type="password" id="gWpass" placeholder="unchanged">
+    <div class="warnbox">The board reconnects at once. If the new details are wrong it opens the setup network GateMaster-xxxx after a restart.</div>
+    <p><button class="b p" onclick="saveWifi()">Save &amp; reconnect</button></p><div class="err" id="gErr3"></div>
+  </div>
+  <div class="card">
+    <h2>MQTT <span class="pill" id="gMq" style="margin-left:6px"></span></h2>
+    <label class="f">Broker host (empty = MQTT off)</label><input type="text" id="gMqHost">
+    <div class="row"><div><label class="f">Port</label><input type="number" id="gMqPort" min="1" max="65535"></div></div>
+    <label class="f">User</label><input type="text" id="gMqUser" autocomplete="off">
+    <label class="f">Password</label><input type="password" id="gMqPass" autocomplete="new-password">
+    <label class="f">Base topic</label><input type="text" id="gMqBase">
+    <div class="sw"><div>Home Assistant discovery<small>The gate appears in Home Assistant by itself.</small></div><label class="tog"><input type="checkbox" id="gHa"><span></span></label></div>
+    <p><button class="b p" onclick="saveMqtt()">Save</button></p><div class="err" id="gErr4"></div>
+  </div>
+  <div class="card">
+    <h2>Time zone</h2>
+    <p class="muted small">For log time stamps. The time comes from the internet; the gate runs without it.</p>
+    <select id="gTzSel" onchange="if(this.value)$('#gTz').value=this.value">
+      <option value="">— choose —</option>
+      <option value="PST8PDT,M3.2.0,M11.1.0">US Pacific</option><option value="MST7MDT,M3.2.0,M11.1.0">US Mountain</option>
+      <option value="MST7">US Arizona</option><option value="CST6CDT,M3.2.0,M11.1.0">US Central</option>
+      <option value="EST5EDT,M3.2.0,M11.1.0">US Eastern</option><option value="GMT0BST,M3.5.0/1,M10.5.0">UK</option>
+      <option value="CET-1CEST,M3.5.0,M10.5.0/3">Central Europe</option><option value="EET-2EEST,M3.5.0/3,M10.5.0/4">Eastern Europe</option>
+      <option value="AEST-10AEDT,M10.1.0,M4.1.0/3">Australia East</option><option value="UTC0">UTC</option>
+    </select>
+    <label class="f">POSIX time zone</label><input type="text" id="gTz">
+    <p><button class="b p" onclick="save({tz:val('gTz')},'gErr5')">Save</button></p><div class="err" id="gErr5"></div>
+  </div>
+  <div class="card">
+    <h2>Firmware</h2>
+    <div class="kv"><div>Running</div><div class="v" id="gFw"></div><div>Latest</div><div class="v" id="gLatest">not checked</div></div>
+    <p class="small muted" id="gNotes"></p>
+    <div class="row"><button class="b" onclick="cmd('update_check');setTimeout(loadUpdate,4000)">Check for update</button><button class="b p hide" id="gInstall" onclick="install()">Install</button></div>
+    <label class="f">Or upload a firmware file (.bin)</label>
+    <div class="row"><input type="file" id="gFile" accept=".bin"><button class="b" onclick="upload()">Upload</button></div>
+    <div class="bar hide" id="gProg" style="margin-top:8px"><div></div></div>
+    <div class="err" id="gErr6"></div>
+    <p class="small muted">Updates are refused while the gate moves. A new version that fails to start properly is replaced by the previous one automatically.</p>
+  </div>
+  <div class="card">
+    <h2>Backup &amp; restore</h2>
+    <p class="muted small">All parameters and settings except passwords, as one file. Restore it on this or a replacement board.</p>
+    <div class="row"><a href="/api/backup" download><button class="b">Download backup</button></a></div>
+    <label class="f">Restore from file</label><div class="row"><input type="file" id="gRest" accept=".json"><button class="b" onclick="restore()">Restore</button></div>
+    <div class="err" id="gErr7"></div>
+  </div>
+  <div class="card">
+    <h2>Advanced</h2>
+    <label class="f">Hardware</label>
+    <select id="gHw"><option value="0">GateMaster board</option><option value="1">Simulator (plain ESP32 DevKit, no gate)</option></select>
+    <div class="warnbox">Simulator mode drives no outputs except the blue LED, for testing on a DevKit. Never choose it on a board installed at a gate. Changing it restarts the board.</div>
+    <p><button class="b" onclick="saveHw()">Apply</button></p>
+    <div class="sw"><div>Arduino IDE uploads<small>Network upload from the Arduino IDE, same password. Restarts the board.</small></div><label class="tog"><input type="checkbox" id="gAota" onchange="save({arduinoOta:this.checked?1:0},'gErr8')"><span></span></label></div>
+    <div class="row" style="margin-top:10px">
+      <button class="b" onclick="if(confirm('Forget the learned travel times? The next full open and close learns them again.'))cmd('relearn')">Re-learn travel</button>
+      <button class="b" onclick="if(confirm('Restart the board?'))cmd('reboot')">Restart</button>
+      <button class="b d" onclick="factory()">Factory reset</button>
+    </div>
+    <div class="err" id="gErr8"></div>
+  </div>
+</div>
+</section>
+
+<!-- ============================== Simulator ============================== -->
+<section id="t-sim">
+<div class="grid">
+  <div class="card" style="grid-column:1/-1">
+    <h2>Simulated gate</h2>
+    <div class="small muted">Closed ← → Open · <span id="simTxt"></span></div>
+    <div class="track" id="simTrack"><div class="post"></div><div class="gate" id="simGate"></div><div class="obs hide" id="simObs"></div></div>
+  </div>
+  <div class="card">
+    <h2>Inputs</h2>
+    <p class="small muted">Press = a short pulse. Hold = stays active until pressed again.</p>
+    <div class="chips" id="simPulse"></div>
+    <div class="chips" id="simHold" style="margin-top:10px"></div>
+  </div>
+  <div class="card">
+    <h2>Board buttons</h2>
+    <div class="row"><button class="b" onclick="sim('button/open','press')">OPEN</button><button class="b" onclick="sim('button/stop','press')">STOP</button><button class="b" onclick="sim('button/close','press')">CLOSE</button></div>
+    <div class="row" style="margin-top:8px"><button class="b" id="simStopHold" onclick="stopHold()">Hold STOP</button><span class="small muted">3 s = Reset alarm</span></div>
+    <div class="sw" style="margin-top:8px"><div>DIP1 (open direction)</div><label class="tog"><input type="checkbox" id="simDip" onchange="sim('dip1',this.checked?'on':'off')"><span></span></label></div>
+  </div>
+  <div class="card">
+    <h2>Obstacle &amp; faults</h2>
+    <label class="f">Obstacle at <span id="simObsV">50</span> % of travel</label>
+    <input type="range" id="simObsPos" min="2" max="98" value="50" style="width:100%" oninput="$('#simObsV').textContent=this.value">
+    <div class="row"><button class="b" onclick="sim('obstacle',val('simObsPos'))">In the way of closing</button><button class="b" onclick="sim('obstacle_opening',val('simObsPos'))">In the way of opening</button><button class="b" onclick="sim('obstacle','none')">Remove</button></div>
+    <div class="row" style="margin-top:10px"><button class="b" onclick="sim('trip','1')">Trip overcurrent latch</button><button class="b" id="simEf" onclick="sim('edgefault',this.classList.contains('on')?'off':'on')">Edge wire break</button></div>
+    <label class="f">Push the gate by hand to (%)</label><div class="row"><input type="number" id="simPush" min="0" max="100" value="10"><button class="b" onclick="sim('push',val('simPush'))">Push</button></div>
+  </div>
+  <div class="card">
+    <h2>Simulated installation</h2>
+    <label class="f">Limit switches</label><div class="row"><button class="b" onclick="sim('limits','NO')">NO</button><button class="b" onclick="sim('limits','NC')">NC</button><span class="muted small" id="simLim"></span></div>
+    <label class="f">Travel time (s)</label><div class="row"><input type="number" id="simTravel" min="5" max="120" value="20"><button class="b" onclick="sim('travel',val('simTravel'))">Set</button></div>
+    <div class="err" id="simErr"></div>
+  </div>
+</div>
+</section>
+</main>
+</div>
+<div id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const val=id=>document.getElementById(id).value;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let INFO={},CFG=null,ST=null,tab='controls',logSeq=0,logRows=[],graphCur={run:-1,a:[],t:[]},graphLast={run:-1,a:[],t:[]};
+const INPUTS=[['3bt','3BT (single button)'],['limit1','LIMIT 1'],['limit2','LIMIT 2'],['ped','PED-SW'],['safety','SAFETY (photo-eye)'],['phantom','PHANTOM'],['exit','EXIT LOOP / OPEN'],['reset','RESET (radio)'],['radio','RELAY (radio)'],['edge','EDGE (safety edge)'],['mid','MID (reed)'],['spare','SPARE']];
+const SAFETY_IN={safety:1,edge:1};
+
+function toast(msg,bad){const t=$('#toast');t.textContent=msg;t.className='show'+(bad?' bad':'');clearTimeout(t._h);t._h=setTimeout(()=>t.className='',3500)}
+async function api(path,opt={}){
+  const r=await fetch(path,Object.assign({cache:'no-store'},opt));
+  if(r.status==401){location.reload();throw new Error('password needed')}
+  let j=null;try{j=await r.json()}catch(e){}
+  if(!r.ok)throw new Error((j&&j.error)||('error '+r.status));
+  return j;
+}
+const form=o=>{const f=new URLSearchParams();for(const k in o)f.append(k,o[k]);return {method:'POST',body:f}};
+
+// ---------------------------------------------------------------- start
+async function init(){
+  try{INFO=await (await fetch('/api/info',{cache:'no-store'})).json()}catch(e){$('#hSub').textContent='cannot reach the board';return}
+  $('#hName').textContent=INFO.name||'GateMaster';
+  $('#hSub').textContent=INFO.host+'.local · firmware '+INFO.fw;
+  document.title=(INFO.name||'GateMaster')+' – GateMaster';
+  if(INFO.setupOnly){$('#vSetup').classList.remove('hide');$('#hState').textContent='setup';$('#sHost').textContent='http://'+INFO.host+'.local';scan();return}
+  if(!INFO.passwordSet){$('#vPass').classList.remove('hide');$('#hState').textContent='new';return}
+  $('#vApp').classList.remove('hide');
+  if(INFO.sim)$('#tabSim').classList.remove('hide');
+  $$('#tabs button').forEach(b=>b.onclick=()=>show(b.dataset.t));
+  buildInputs();buildSim();
+  await loadConfig();
+  poll();setInterval(poll,1000);
+  setInterval(()=>{if(tab=='status')pollGraph()},200);
+  setInterval(()=>{if(tab=='status')pollLog()},3000);
+  setInterval(()=>{if(tab=='general')loadUpdate()},5000);
+}
+function show(t){tab=t;$$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));$$('section').forEach(s=>s.classList.toggle('on',s.id=='t-'+t));if(t=='status'){pollLog();pollGraph(true);drawGraph()}if(t=='general')loadUpdate()}
+
+async function firstPass(){
+  const a=val('p1'),b=val('p2');
+  if(a.length<8){$('#pErr').textContent='At least 8 characters';return}
+  if(a!==b){$('#pErr').textContent='The two do not match';return}
+  try{await api('/api/password',form({password:a}));$('#pErr').textContent='';alert('Password saved. Your browser will now ask for it – user name: admin');location.reload()}catch(e){$('#pErr').textContent=e.message}
+}
+
+// ---------------------------------------------------------------- setup network
+async function scan(listId){
+  try{
+    const n=await api('/api/scan');n.sort((a,b)=>b.rssi-a.rssi);
+    if(listId){$('#'+listId).innerHTML=n.map(x=>`<option value="${esc(x.ssid)}">`).join('');toast(n.length+' networks found');return}
+    $('#sSsid').innerHTML='<option value="">— choose —</option>'+n.map(x=>`<option>${esc(x.ssid)}</option>`).join('');
+  }catch(e){toast(e.message,1)}
+}
+async function setupSave(){
+  const s=val('sSsidT')||val('sSsid');
+  if(!s){$('#sErr').textContent='Choose or type a network';return}
+  try{await api('/api/wifi',form({ssid:s,pass:val('sPass')}));$('#sErr').textContent='';document.querySelector('#vSetup').innerHTML='<h2>Connecting…</h2><p>Join your home Wi-Fi again, then open <b>http://'+esc(INFO.host)+'.local</b>.</p>'}catch(e){$('#sErr').textContent=e.message}
+}
+
+// ---------------------------------------------------------------- commands
+async function cmd(c){
+  try{await api('/api/cmd',form({cmd:c}));$('#cMsg').textContent='';toast(c.replace('_',' ')+': ok');setTimeout(poll,150)}
+  catch(e){$('#cMsg').textContent=e.message;toast(e.message,1);setTimeout(poll,150)}
+}
+
+// ---------------------------------------------------------------- status
+const yes=b=>b?'yes':'no';
+function kv(el,rows){el.innerHTML=rows.map(r=>`<div>${r[0]}</div><div class="v">${r[1]}</div>`).join('')}
+function fmtUp(s){const d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return (d?d+'d ':'')+h+'h '+m+'m'}
+function fmtEpoch(t){return t>0?new Date(t*1000).toLocaleString():'never'}
+function buildInputs(){$('#sInputs').innerHTML='<tr><th>Input</th><th>State</th><th>Contact</th></tr>'+INPUTS.map(i=>`<tr><td>${i[1]}</td><td id="in-${i[0]}"></td><td id="ic-${i[0]}" class="muted"></td></tr>`).join('')}
+async function poll(){
+  try{ST=await api('/api/status')}catch(e){$('#hState').textContent='offline';$('#hState').className='pill bad';return}
+  const s=ST,st=s.state;
+  for(const id of ['#hState','#cState']){const e=$(id);e.textContent=st;e.className='pill '+st}
+  const pos=s.position>=0?s.position+' %':'position unknown';
+  $('#cPos').textContent=pos+(s.direction!='none'?' · '+s.direction:'');
+  $('#cBar').style.width=(s.position>=0?s.position:0)+'%';
+  $('#mHold').checked=s.hold_open;$('#mAc').checked=s.auto_close;$('#mLock').checked=s.lock_out;
+  $('#cAc').textContent=s.autoclose_left>=0?s.autoclose_left+' s':'–';
+  $('#cEye').innerHTML=s['input/safety']?'<span class="dot on"></span>beam broken':'<span class="dot ok"></span>clear';
+  $('#cEdge').innerHTML=s['input/edge']?'<span class="dot on"></span>'+(s['fault/edge_wiring']?'wiring fault':'pressed'):'<span class="dot ok"></span>clear';
+  const F=[];if(s['fault/lockout'])F.push('LOCKOUT – press Reset alarm');if(s['fault/motor_latched'])F.push('motor fault – press Reset alarm');else if(s['fault/no_current'])F.push('no motor current');
+  if(s['fault/max_run'])F.push('max run time');if(s['fault/both_limits'])F.push('both limits active (check SW6 / DIP2)');if(s['fault/forced_open'])F.push('forced open');if(s['fault/edge_wiring'])F.push('edge wiring');
+  $('#cFault').innerHTML=F.length?'<span style="color:var(--bad)">'+F.join('<br>')+'</span>':'none';
+  if(tab=='status'){
+    kv($('#sGate'),[['State',st],['Position',pos],['Direction',s.direction],['Auto-close in',s.autoclose_left>=0?s.autoclose_left+' s':'–'],['Hold open',yes(s.hold_open)],['Auto-close',s.auto_close?'on':'off'],['Lock out',s.lock_out?'on':'off']]);
+    kv($('#sMotor'),[['Winding',s.motor],['Current',s.current.toFixed(2)+' A'],['Peak (last run)',s.peak.toFixed(2)+' A'],['Learned running current',s.baseline.toFixed(2)+' A'],['Obstruction threshold',s.threshold.toFixed(2)+' A'],['Obstructions this run',s['fault/obstructions_run']]]);
+    for(const [k] of INPUTS){const a=s['input/'+k];$('#in-'+k).innerHTML=`<span class="dot ${a?(SAFETY_IN[k]?'bad':'on'):''}"></span>${a?'active':'clear'}`;$('#ic-'+k).textContent=s['input/'+k+'/contact']}
+    kv($('#sLim'),[['Open limit',yes(s.open_limit)],['Closed limit',yes(s.closed_limit)],['Limit switch type',s.limit_type],['DIP1',s.dip1?'ON':'OFF'],['Board button',s.button],['LOCK output',s.lock?'on':'off'],['RELAY-1',s.relay?'on':'off'],['ALARM buzzer',s.alarm?'ON':'off'],['Edge voltage',s.edge_mv>=0?s.edge_mv+' mV':'digital']]);
+    const fr=(n,b)=>[n,b?'<span style="color:var(--bad);font-weight:600">YES</span>':'no'];
+    kv($('#sFaults'),[fr('Lockout (entrapment)',s['fault/lockout']),fr('No motor current',s['fault/no_current']),fr('Motor fault latched',s['fault/motor_latched']),fr('Max run time reached',s['fault/max_run']),fr('Both limits active',s['fault/both_limits']),fr('Forced open',s['fault/forced_open']),fr('Edge wiring',s['fault/edge_wiring'])]);
+    kv($('#sCount'),[['Open/close cycles',s.cycles],['Obstructions (total)',s.obstructions],['Last obstruction',fmtEpoch(s.last_obstruction)],['Open travel',s.travel_open>0?s.travel_open+' s':'not learned'],['Close travel',s.travel_close>0?s.travel_close+' s':'not learned'],['MID reed',s.mid_position>=0?s.mid_position+' %':'not learned']]);
+    kv($('#sDev'),[['Firmware',s.firmware+(s.update_available?' (update '+esc(s.latest_version)+' available)':'')],['Hardware',s.hardware],['Uptime',fmtUp(s.uptime)],['Last restart',s.reset_reason],['Free memory',Math.round(s.free_heap/1024)+' kB'],['Wi-Fi',esc(s.ssid)+' ('+s.rssi+' dBm)'],['IP',s.ip],['MAC',s.mac],['Address',s.host],['MQTT',s.mqtt?'connected':'not connected']]);
+  }
+  if(tab=='general'){$('#gIp').textContent=s.ip;$('#gMac').textContent=s.mac;$('#gWifi').textContent=s.ssid?s.ssid+' ('+s.rssi+' dBm)':'not connected';$('#gMq').textContent=s.mqtt?'connected':'off';}
+  if(s.sim)renderSim(s.sim);
+}
+
+// ---------------------------------------------------------------- graph
+async function pollGraph(force){
+  try{
+    const g=await api(`/api/current?run=${graphCur.run}&from=${force?0:graphCur.a.length}`);
+    if(g.run!=graphCur.run||g.from==0){if(g.run!=graphCur.run&&graphCur.run>=0)loadLast();graphCur={run:g.run,a:[],t:[]}}
+    graphCur.a.push(...g.a);graphCur.t.push(...g.t);
+    if(graphLast.run<0)loadLast();
+    drawGraph();
+  }catch(e){}
+}
+async function loadLast(){try{const g=await api('/api/current?last=1&run=-1&from=0');graphLast={run:g.run,a:g.a,t:g.t};drawGraph()}catch(e){}}
+function drawGraph(){
+  const c=$('#graph'),r=c.getBoundingClientRect(),dpr=window.devicePixelRatio||1;
+  c.width=r.width*dpr;c.height=r.height*dpr;const x=c.getContext('2d');x.scale(dpr,dpr);
+  const W=r.width,H=r.height,L=36,B=20,css=getComputedStyle(document.documentElement);
+  const n=Math.max(100,graphCur.a.length,graphLast.a.length);
+  let mx=Math.max(8,...graphCur.a.map(v=>v/10),...graphCur.t.map(v=>v/10),...graphLast.a.map(v=>v/10));mx=Math.ceil(mx/2)*2;
+  const X=i=>L+(W-L-8)*i/n,Y=a=>(H-B)-(H-B-8)*a/mx;
+  x.strokeStyle=css.getPropertyValue('--line');x.fillStyle=css.getPropertyValue('--muted');x.font='11px system-ui';x.lineWidth=1;
+  for(let a=0;a<=mx;a+=2){x.beginPath();x.moveTo(L,Y(a));x.lineTo(W-8,Y(a));x.stroke();x.fillText(a+' A',2,Y(a)+4)}
+  const stp=Math.max(1,Math.ceil(n/100))*2;for(let s=0;s<=n/10;s+=stp){x.textAlign=X(s*10)>W-30?'right':'left';x.fillText(s+' s',Math.min(X(s*10)-6,W-8),H-4)}x.textAlign='left';
+  const line=(arr,col,dash,w)=>{if(!arr.length)return;x.strokeStyle=col;x.setLineDash(dash);x.lineWidth=w;x.beginPath();arr.forEach((v,i)=>i?x.lineTo(X(i),Y(v/10)):x.moveTo(X(i),Y(v/10)));x.stroke();x.setLineDash([])};
+  line(graphLast.a,'#9ca3af',[],1.5);line(graphCur.t,'#dc2626',[5,4],1.5);line(graphCur.a,css.getPropertyValue('--acc'),[],2);
+}
+
+// ---------------------------------------------------------------- event log
+async function pollLog(){
+  try{
+    const j=await api('/api/log?since='+logSeq);
+    if(j.events.length){logRows=logRows.concat(j.events).slice(-200);logSeq=j.latest}
+    $('#log').innerHTML=logRows.slice().reverse().map(e=>`<div><time>${esc(e.t>0?new Date(e.t*1000).toLocaleString():e.time)}</time><span>${esc(e.text)}</span></div>`).join('')||'<div class="muted">no events</div>';
+  }catch(e){}
+}
+
+// ---------------------------------------------------------------- parameters
+async function loadConfig(){
+  CFG=await api('/api/config');
+  const groups={};CFG.schema.forEach(p=>(groups[p.group]=groups[p.group]||[]).push(p));
+  $('#pGroups').innerHTML=Object.keys(groups).map((g,gi)=>`<div class="card"><h2>${esc(g)}</h2><table class="prm">${groups[g].map(p=>prmRow(p)).join('')}</table><p><button class="b p" onclick="saveGroup('${esc(g)}',${gi})">Save ${esc(g)}</button></p><div class="err" id="pe${gi}"></div></div>`).join('');
+  CFG.schema.forEach(p=>setPrm(p,CFG.params[p.key]));
+  const d=CFG.dev;
+  $('#gName').value=d.name;$('#gHost').textContent='http://'+d.host+'.local';$('#gHost').href='http://'+d.host+'.local/';
+  if(!$('#gSsid').value)$('#gSsid').value=d.wifiSsid;$('#gMqHost').value=d.mqttHost;$('#gMqPort').value=d.mqttPort;$('#gMqUser').value=d.mqttUser;
+  $('#gMqPass').placeholder=d.mqttPassSet?'unchanged':'';$('#gMqBase').value=d.mqttBase;$('#gMqBase').placeholder=d.mqttBaseEffective;$('#gHa').checked=d.haDiscovery;
+  $('#gTz').value=d.tz;$('#gHw').value=d.hwMode;$('#gAota').checked=d.arduinoOta;
+  $('#gFw').textContent=CFG.update.version;renderUpdate(CFG.update);
+}
+function opts(p){return p.options.split('|')}
+function fmtV(p,v){if(p.type=='bool')return v?'on':'off';if(p.type=='enum')return opts(p)[v];return v+(p.unit?' '+p.unit:'')}
+function prmRow(p){
+  let inp;
+  if(p.type=='bool')inp=`<label class="tog"><input type="checkbox" id="pp-${p.key}"><span></span></label>`;
+  else if(p.type=='enum')inp=`<select id="pp-${p.key}">${opts(p).map((o,i)=>`<option value="${i}">${esc(o)}</option>`).join('')}</select>`;
+  else inp=`<div class="row"><input type="number" id="pp-${p.key}" min="${p.min}" max="${p.max}" step="${p.step}"><span class="muted">${esc(p.unit)}</span></div>`;
+  const range=p.type=='bool'||p.type=='enum'?'':` · ${p.min}–${p.max} ${esc(p.unit)}`;
+  return `<tr><td><b>${esc(p.label)}</b><div class="def">${esc(p.help||'')}</div></td><td>${inp}<div class="def">default ${esc(fmtV(p,p.def))}${range} <a href="#" onclick="setPrm(CFG.schema.find(x=>x.key=='${p.key}'),${p.def});return false">use default</a></div></td></tr>`;
+}
+function setPrm(p,v){const e=$('#pp-'+p.key);if(p.type=='bool')e.checked=!!v;else if(p.type=='enum')e.value=v;else e.value=v}
+function getPrm(p){const e=$('#pp-'+p.key);return p.type=='bool'?(e.checked?1:0):e.value}
+async function saveGroup(g,gi){
+  const o={};CFG.schema.filter(p=>p.group==g).forEach(p=>{const v=getPrm(p);if(String(v)!==String(p.type=='bool'?(CFG.params[p.key]?1:0):CFG.params[p.key]))o[p.key]=v});
+  if(!Object.keys(o).length){toast('nothing changed');return}
+  try{await api('/api/config',form(o));$('#pe'+gi).textContent='';toast(g+' saved');await loadConfig()}catch(e){$('#pe'+gi).textContent=e.message}
+}
+
+// ---------------------------------------------------------------- general
+async function save(o,errId){
+  try{const r=await api('/api/config',form(o));$('#'+errId).textContent='';toast(r.reboot?'Saved – restarting…':'Saved');if(r.reboot)setTimeout(()=>location.reload(),9000);else loadConfig()}
+  catch(e){$('#'+errId).textContent=e.message}
+}
+async function changePass(){
+  const a=val('gP1'),b=val('gP2');
+  if(a.length<8){$('#gErr2').textContent='At least 8 characters';return}
+  if(a!==b){$('#gErr2').textContent='The two do not match';return}
+  try{await api('/api/password',form({password:a}));alert('Password changed. Your browser will ask for the new one (user: admin).');location.reload()}catch(e){$('#gErr2').textContent=e.message}
+}
+function saveWifi(){const o={wifiSsid:val('gSsid')};if(!o.wifiSsid){$('#gErr3').textContent='Enter the network name';return}if(val('gWpass'))o.wifiPass=val('gWpass');if(confirm('Switch the board to '+o.wifiSsid+'? This page may lose its connection.'))save(o,'gErr3')}
+function saveMqtt(){const o={mqttHost:val('gMqHost'),mqttPort:val('gMqPort'),mqttUser:val('gMqUser'),mqttBase:val('gMqBase'),haDiscovery:$('#gHa').checked?1:0};if(val('gMqPass'))o.mqttPass=val('gMqPass');save(o,'gErr4')}
+function saveHw(){const v=val('gHw');if(v==CFG.dev.hwModeRunning){toast('already running that way');return}if(confirm(v==1?'Switch to SIMULATOR mode and restart? Only for a DevKit with no gate connected.':'Switch to GateMaster BOARD mode and restart?'))save({hwMode:v},'gErr8')}
+async function factory(){if(!confirm('Factory reset: erase Wi-Fi, password, MQTT and name? Gate parameters are kept.'))return;if(!confirm('Really? The board restarts and opens its setup network.'))return;try{await api('/api/factory-reset',{method:'POST'});toast('Factory reset – restarting')}catch(e){toast(e.message,1)}}
+async function loadUpdate(){try{renderUpdate(await api('/api/update'))}catch(e){}}
+function renderUpdate(u){
+  $('#gLatest').textContent=u.checked?(u.latest+(u.date?' ('+u.date+')':'')+(u.available?' – available':' – up to date')):'not checked';
+  $('#gNotes').textContent=u.notes||'';$('#gInstall').classList.toggle('hide',!u.available||u.installing);
+  const pr=$('#gProg');pr.classList.toggle('hide',!u.installing);pr.firstElementChild.style.width=u.progress+'%';
+  $('#gErr6').textContent=u.installing?'Installing… '+u.progress+' %':(u.error||'');
+}
+async function install(){if(!confirm('Install the new firmware? The gate is held still while installing, then the board restarts.'))return;try{await api('/api/cmd',form({cmd:'update_install'}));toast('Installing…');setTimeout(loadUpdate,1000)}catch(e){$('#gErr6').textContent=e.message}}
+function upload(){
+  const f=$('#gFile').files[0];if(!f){$('#gErr6').textContent='Choose a .bin file';return}
+  const fd=new FormData();fd.append('firmware',f,f.name);const x=new XMLHttpRequest(),pr=$('#gProg');
+  pr.classList.remove('hide');x.upload.onprogress=e=>{pr.firstElementChild.style.width=(e.loaded*100/e.total)+'%'};
+  x.onload=()=>{let j={};try{j=JSON.parse(x.responseText)}catch(e){}if(x.status==200){$('#gErr6').textContent='Uploaded – restarting…';setTimeout(()=>location.reload(),12000)}else $('#gErr6').textContent=j.error||('failed ('+x.status+')')};
+  x.onerror=()=>$('#gErr6').textContent='upload failed';x.open('POST','/api/update');x.send(fd);
+}
+async function restore(){
+  const f=$('#gRest').files[0];if(!f){$('#gErr7').textContent='Choose a backup file';return}
+  const t=await f.text();
+  try{const r=await api('/api/restore',{method:'POST',headers:{'Content-Type':'text/plain'},body:t});$('#gErr7').textContent='Restored '+r.applied+' values'+(r.skipped?' (skipped: '+r.skipped+')':'');toast('Restored');loadConfig()}catch(e){$('#gErr7').textContent=e.message}
+}
+
+// ---------------------------------------------------------------- simulator
+const SIM_PULSE=[['exit','EXIT'],['radio','Radio'],['reset','RESET'],['3bt','3BT'],['edge','Edge press']];
+const SIM_HOLD=[['safety','Beam broken'],['edge','Edge pressed'],['exit','EXIT held'],['ped','PED-SW'],['phantom','PHANTOM'],['spare','SPARE']];
+function buildSim(){
+  $('#simPulse').innerHTML=SIM_PULSE.map(p=>`<button class="b" onclick="sim('${p[0]}','pulse')">${p[1]}</button>`).join('');
+  $('#simHold').innerHTML=SIM_HOLD.map(p=>`<button class="b" id="sh-${p[0]}" onclick="sim('${p[0]}',this.classList.contains('on')?'off':'on')">${p[1]}</button>`).join('');
+}
+async function sim(name,value){try{const r=await api('/api/sim',form({name,value}));$('#simErr').textContent='';renderSim(r.sim);setTimeout(poll,120)}catch(e){$('#simErr').textContent=e.message;toast(e.message,1)}}
+let stopHeld=false;function stopHold(){stopHeld=!stopHeld;sim('button/stop',stopHeld?'on':'off');$('#simStopHold').classList.toggle('on',stopHeld);$('#simStopHold').textContent=stopHeld?'Release STOP':'Hold STOP'}
+function renderSim(m){
+  $('#simGate').style.left=(2+m.pos*0.62)+'%';
+  const o=$('#simObs');o.classList.toggle('hide',m.obstacle<0);if(m.obstacle>=0)o.style.left=(2+m.obstacle*0.62+(m.obstacleBlocksOpening?36:0))+'%';
+  $('#simTxt').textContent=`position ${m.pos.toFixed(0)} % · motor ${m.amps.toFixed(1)} A`+(m.stalled?' · STALLED':'')+(m.trip?' · overcurrent latch TRIPPED':'')+(m.obstacle>=0?` · obstacle at ${m.obstacle} % (${m.obstacleBlocksOpening?'opening':'closing'})`:'');
+  for(const k in m.held){const b=$('#sh-'+k);if(b)b.classList.toggle('on',m.held[k])}
+  $('#simEf').classList.toggle('on',m.edgeFault);$('#simDip').checked=m.dip1;$('#simLim').textContent='now '+m.limits;
+  if(document.activeElement!==$('#simTravel'))$('#simTravel').value=m.travel;
+}
+init();
+</script>
+</body>
+</html>

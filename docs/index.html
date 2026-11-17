@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GateMaster – install firmware</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#1d2330;--muted:#677084;--line:#dfe2e8;--acc:#2563eb}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--card:#1b1f27;--ink:#e6e9ef;--muted:#9aa3b5;--line:#2c323d;--acc:#4f8cff}}
+body{margin:0;font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+main{max-width:720px;margin:0 auto;padding:28px 18px 60px}
+h1{font-size:28px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 24px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;margin:14px 0}
+h2{font-size:18px;margin:0 0 10px}
+ol{padding-left:22px;margin:0}li{margin:6px 0}
+esp-web-install-button button[slot=activate],esp-web-install-button [slot=activate]{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:14px 26px;font:600 18px system-ui;cursor:pointer}
+.muted{color:var(--muted);font-size:14px}
+code{background:var(--bg);padding:1px 5px;border-radius:5px}
+a{color:var(--acc)}
+.warn{background:#fef3c7;color:#78350f;border-radius:8px;padding:10px 12px;font-size:14px}
+@media(prefers-color-scheme:dark){.warn{background:#422006;color:#fde68a}}
+</style>
+</head>
+<body>
+<main>
+  <h1>GateMaster</h1>
+  <p class="sub">Firmware for the GateMaster sliding-gate controller (All-O-Matic SL-100 replacement) · version <span id="ver">…</span></p>
+
+  <div class="card">
+    <h2>Install</h2>
+    <ol>
+      <li>Plug the GateMaster board into this computer with a USB cable. The gate does not need to be connected.</li>
+      <li>Click <b>Install on a GateMaster board</b> and choose the USB port (it may be called <i>USB-SERIAL CH340</i>, <i>CP2102</i> or similar).</li>
+      <li>When it asks, choose your home Wi-Fi and enter its password.</li>
+      <li>Click <b>Visit device</b>. The gate's page opens – no address to type. Set a password on the first visit.</li>
+    </ol>
+    <p style="margin:20px 0 6px">
+      <esp-web-install-button manifest="manifest.json">
+        <button slot="activate">Install on a GateMaster board</button>
+        <span slot="unsupported"><b>This browser cannot install firmware.</b> Use Chrome or Edge on a Windows, Mac or Linux computer.</span>
+        <span slot="not-allowed"><b>Open this page over https</b> (the github.io address) to install.</span>
+      </esp-web-install-button>
+    </p>
+    <p class="muted">Takes about two minutes. Works in Chrome and Edge on desktop computers.</p>
+  </div>
+
+  <div class="card">
+    <h2>Already installed?</h2>
+    <p>Plug the board in and click the same button, then choose the port:</p>
+    <ul>
+      <li><b>Visit device</b> opens the gate's page – handy when you don't know its address.</li>
+      <li><b>Change Wi-Fi</b> moves it to another network.</li>
+      <li><b>Install</b> updates it (settings are kept unless you choose to erase).</li>
+    </ul>
+    <p>On your home network the gate is also always at <code>http://gatemaster-xxxx.local</code> – the four characters are shown on the gate's page and on this installer. Updates can also be installed from the gate's own page (General → Firmware), with no cable.</p>
+  </div>
+
+  <div class="card">
+    <h2>Testing on a plain ESP32 DevKit</h2>
+    <p>Any ESP32 board with 4 MB flash works. This version starts with a simulated gate: the page gets a <b>Simulator</b> tab for photo-eye, safety edge, EXIT, radio, buttons, obstacles and faults, and nothing is driven except the board's blue LED (it blinks with the gate's heartbeat). For a factory reset, hold the DevKit's BOOT button for 10 s within a minute of plugging it in.</p>
+    <p style="margin:14px 0 6px">
+      <esp-web-install-button manifest="manifest-devkit.json">
+        <button slot="activate" style="background:#475569">Install on an ESP32 DevKit (simulator)</button>
+        <span slot="unsupported">Use Chrome or Edge on a desktop computer.</span>
+        <span slot="not-allowed">Open this page over https.</span>
+      </esp-web-install-button>
+    </p>
+    <div class="warn">The mode can be changed later on the gate's page (General → Advanced → Hardware). Never use Simulator on a board installed at a gate.</div>
+  </div>
+
+  <div class="card">
+    <h2>If the USB port does not show up</h2>
+    <ul>
+      <li>Try another cable – some are charge-only.</li>
+      <li>Windows 10/11 and macOS include the CH340 driver. Older Windows: install the <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html">WCH CH340 driver</a>. DevKits with a CP2102 chip need the <a href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers">Silicon Labs driver</a>.</li>
+      <li>If the board's Wi-Fi details are wrong, it opens a setup network called <b>GateMaster-xxxx</b> about a minute after starting. Join it with a phone; the setup page opens by itself.</li>
+    </ul>
+  </div>
+
+  <p class="muted">Release notes: <span id="notes"></span> · <a href="version.json">version.json</a> · <a href="https://github.com/ivanvachovsky/GateMaster">source code</a></p>
+</main>
+<script>
+fetch('version.json').then(r=>r.json()).then(v=>{document.getElementById('ver').textContent=v.version+' ('+v.date+')';document.getElementById('notes').textContent=v.notes||'–'}).catch(()=>{});
+</script>
+</body>
+</html>
