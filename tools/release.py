@@ -49,5 +49,5 @@ for name, img in (("manifest.json", full), ("manifest-devkit.json", devkit)):
         "builds": [{"chipFamily": "ESP32", "parts": [{"path": f"firmware/{img.name}", "offset": 0}]}]}, indent=2) + "\n")
 (DOCS / "version.json").write_text(json.dumps({
     "version": version, "date": today, "notes": notes,
-    "url": f"firmware/{upd.name}", "sha256": sha, "size": len(data)}, indent=2) + "\n")
+    "url": f"firmware/{upd.name}", "sha256": sha, "size": len(data)}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print(f"GateMaster {version}: {full.name}, {devkit.name}, {upd.name} ({len(data)} bytes, sha256 {sha[:16]}...)")
