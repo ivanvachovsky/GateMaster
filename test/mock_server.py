@@ -32,7 +32,7 @@ def status():
               "ssid": "HomeNet", "rssi": -58, "ip": "192.168.1.77", "mac": "24:6F:28:A1:B2:C3", "host": "gatemaster-a1b2.local",
               "mqtt": True, "setup_network": False, "update_available": False, "latest_version": "0.2.0"})
     s["sim"] = {"pos": pos, "amps": s["current"], "travel": 20, "limits": "NC", "obstacle": 60, "obstacleBlocksOpening": False,
-                "trip": False, "dip1": False, "edgeFault": False, "stalled": False, "held": held}
+                "trip": False, "dip1": False, "edgeFault": False, "stalled": False, "realInputs": True, "realButtons": False, "held": held}
     return s
 
 
@@ -66,7 +66,7 @@ class H(BaseHTTPRequestHandler):
             return self.j({"params": SCHEMA["params"], "schema": SCHEMA["schema"],
                            "dev": {"name": "Driveway gate", "host": "gatemaster-a1b2", "wifiSsid": "HomeNet", "mqttHost": "192.168.1.129",
                                    "mqttPort": 1883, "mqttUser": "gate", "mqttPassSet": True, "mqttBase": "", "mqttBaseEffective": "gatemaster/driveway_gate",
-                                   "haDiscovery": True, "tz": "PST8PDT,M3.2.0,M11.1.0", "hwMode": 1, "hwModeRunning": 1, "arduinoOta": False},
+                                   "haDiscovery": True, "tz": "PST8PDT,M3.2.0,M11.1.0", "hwMode": 2, "hwModeRunning": 2, "arduinoOta": False},
                            "update": {"version": "0.2.0", "checked": True, "available": False, "latest": "0.2.0", "date": "2026-11-17", "notes": "",
                                       "checkedAgoS": 30, "installing": False, "progress": 0, "error": "", "pendingVerify": False}})
         if p.path == "/api/update":

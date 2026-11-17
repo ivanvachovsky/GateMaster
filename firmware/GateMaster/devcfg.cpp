@@ -194,8 +194,8 @@ bool setKey(const String& k, const String& vIn, String& err, bool& needReboot, b
     C.tz = v;
   } else if (k == "hwMode") {
     long n = v.toInt();
-    if (v == "sim" || v == "simulator") n = HW_SIM; else if (v == "board") n = HW_BOARD;
-    if (n != HW_BOARD && n != HW_SIM) { err = "Hardware: board or simulator"; return false; }
+    if (v == "sim" || v == "simulator") n = HW_SIM; else if (v == "board") n = HW_BOARD; else if (v == "sim_io") n = HW_SIM_IO;
+    if (n != HW_BOARD && n != HW_SIM && n != HW_SIM_IO) { err = "Hardware: board, simulator or sim_io"; return false; }
     if (C.hwMode != n) needReboot = true;
     C.hwMode = n;
   } else if (k == "arduinoOta") { C.arduinoOta = toBool(v); needReboot = true; }

@@ -74,7 +74,7 @@ void setup() {
   params::load();
   checkFactoryReset();
   eventlog::begin();
-  eventlog::add("GateMaster %s on %s, restart reason: %s", FW_VERSION, hw == HW_SIM ? "SIMULATOR (DevKit)" : "GateMaster board", status::resetReason());
+  eventlog::add("GateMaster %s on %s, restart reason: %s", FW_VERSION, hw == HW_SIM ? "SIMULATOR (DevKit)" : hw == HW_SIM_IO ? (hal::simRealButtons() ? "SIMULATOR with real inputs and buttons" : "SIMULATOR with real inputs (buttons simulated)") : "GateMaster board", status::resetReason());
   inputs::begin();
   gate::begin();
   wifimgr::begin();

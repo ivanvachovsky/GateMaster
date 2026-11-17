@@ -34,6 +34,7 @@ struct Phys {
 };
 Phys P;
 volatile Winding drv = WIND_OFF;
+bool realIn = false, realBtn = false;     // "Simulator with real inputs"
 uint32_t simT = 0;             // simulator clock, ms
 
 struct Kept { uint32_t magic; float pos; bool limitsNC; float travelS; };
@@ -44,11 +45,37 @@ bool atOpen() { return P.pos >= 1.0f; }
 bool atClosed() { return P.pos <= 0.0f; }
 bool typed(bool active, int type) { return type == CONTACT_NC ? !active : active; }   // contact closed?
 bool isActive(int i) { return P.active[i] || (int32_t)(P.pulseUntil[i] - simT) > 0; }
+// real pin (LOW = contact closed); only in "Simulator with real inputs"
+bool realClosed(int i) {
+#ifdef HOST_TEST
+  (void)i; return false;
+#else
+  return digitalRead(INPUT_PINS[i]) == LOW;
+#endif
+}
+// a Simulator-tab press forces the input active; otherwise the real contact counts
+bool mix(int i, bool virtActive, int type) { return virtActive || !realIn ? typed(virtActive, type) : realClosed(i); }
 // the edge on the gate's leading edge stays squeezed until the gate has backed off ~1 % of travel
 bool edgeSqueezed() { return P.obstacleAt >= 0 && !P.obstacleBlocksOpening && P.pos >= P.obstacleAt && P.pos - P.obstacleAt < 0.012f; }
 }  // namespace
 
 namespace simhw {
+bool realLadder() { return realBtn; }
+
+#ifndef HOST_TEST
+void useRealInputs() {
+  realIn = true;
+  for (int i = 0; i < IN_COUNT; i++) {
+    int p = INPUT_PINS[i];
+    pinMode(p, p >= 34 ? INPUT : INPUT_PULLUP);       // GPIO 34-39 have no internal pull-ups
+  }
+  analogSetPinAttenuation(PIN_BUTTONS, ADC_11db);
+  uint32_t sum = 0;
+  for (int k = 0; k < 8; k++) { sum += analogReadMilliVolts(PIN_BUTTONS); delay(2); }
+  realBtn = sum / 8 >= 2450;                          // pulled-up idle level: a ladder is fitted
+}
+#endif
+
 void begin() {
   if (kept.magic == KEPT_MAGIC) { P.pos = kept.pos; P.limitsNC = kept.limitsNC; P.travelS = kept.travelS; }
   kept.magic = KEPT_MAGIC; kept.pos = P.pos; kept.limitsNC = P.limitsNC; kept.travelS = P.travelS;
@@ -58,17 +85,20 @@ bool contactClosed(InputId i) {
   switch (i) {
     case IN_LIM1: return P.limitsNC ? !atOpen() : atOpen();      // LIMIT 1 stops MOTOR-1 (opening)
     case IN_LIM2: return P.limitsNC ? !atClosed() : atClosed();  // LIMIT 2 stops MOTOR 2 (closing)
-    case IN_SAFE: return typed(isActive(IN_SAFE), params::geti(P_SAFETY_TYPE));
-    case IN_EDGE: return typed(isActive(IN_EDGE) || edgeSqueezed(), params::geti(P_EDGE_TYPE));
-    case IN_EXIT: return typed(isActive(IN_EXIT), params::geti(P_EXIT_TYPE));
-    case IN_RADIO: return typed(isActive(IN_RADIO), params::geti(P_RADIO_TYPE));
-    case IN_MID: return isActive(IN_MID) || fabsf(P.pos - P.midAt) < 0.015f;
-    default: return isActive(i);
+    case IN_SAFE: return mix(i, isActive(IN_SAFE), params::geti(P_SAFETY_TYPE));
+    case IN_EDGE: return mix(i, isActive(IN_EDGE) || edgeSqueezed(), params::geti(P_EDGE_TYPE));
+    case IN_EXIT: return mix(i, isActive(IN_EXIT), params::geti(P_EXIT_TYPE));
+    case IN_RADIO: return mix(i, isActive(IN_RADIO), params::geti(P_RADIO_TYPE));
+    case IN_MID: return isActive(IN_MID) || fabsf(P.pos - P.midAt) < 0.015f || (realIn && realClosed(i));
+    default: return mix(i, isActive(i), CONTACT_NO);
   }
 }
 
 uint16_t buttonMv() {
   Button b = (int32_t)(P.btnUntil - simT) > 0 || P.btnUntil == 0xffffffff ? P.btn : BTN_NONE;
+#ifndef HOST_TEST
+  if (realBtn && b == BTN_NONE) return analogReadMilliVolts(PIN_BUTTONS);   // real OPEN / STOP / CLOSE / DIP1
+#endif
   bool d = P.dip1;
   switch (b) {
     case BTN_STOP: return 60;
@@ -168,6 +198,8 @@ String json() {
   j += ",\"dip1\":" + String(P.dip1 ? "true" : "false");
   j += ",\"edgeFault\":" + String(P.edgeFault ? "true" : "false");
   j += ",\"stalled\":" + String(P.stalled ? "true" : "false");
+  j += ",\"realInputs\":" + String(realIn ? "true" : "false");
+  j += ",\"realButtons\":" + String(realBtn ? "true" : "false");
   j += ",\"held\":{";
   bool first = true;
   for (int i = 0; i < IN_COUNT; i++) {

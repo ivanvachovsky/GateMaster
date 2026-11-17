@@ -236,8 +236,8 @@ canvas{width:100%;height:220px;display:block}
   <div class="card">
     <h2>Advanced</h2>
     <label class="f">Hardware</label>
-    <select id="gHw"><option value="0">GateMaster board</option><option value="1">Simulator (plain ESP32 DevKit, no gate)</option></select>
-    <div class="warnbox">Simulator mode drives no outputs except the blue LED, for testing on a DevKit. Never choose it on a board installed at a gate. Changing it restarts the board.</div>
+    <select id="gHw"><option value="0">GateMaster board</option><option value="1">Simulator (plain ESP32 DevKit, no gate)</option><option value="2">Simulator with real inputs (DevKit wired to switches)</option></select>
+    <div class="warnbox">Both simulator modes drive no outputs except the blue LED, for testing on a DevKit. <b>With real inputs</b>, the contact inputs come from the real pins (LOW = closed, pull-ups on) while the gate stays simulated; tie an unused NC input (photo-eye GPIO 34, edge GPIO 35) to GND. Never choose a simulator mode on a board installed at a gate. Changing it restarts the board.</div>
     <p><button class="b" onclick="saveHw()">Apply</button></p>
     <div class="sw"><div>Arduino IDE uploads<small>Network upload from the Arduino IDE, same password. Restarts the board.</small></div><label class="tog"><input type="checkbox" id="gAota" onchange="save({arduinoOta:this.checked?1:0},'gErr8')"><span></span></label></div>
     <div class="row" style="margin-top:10px">
@@ -256,6 +256,7 @@ canvas{width:100%;height:220px;display:block}
   <div class="card" style="grid-column:1/-1">
     <h2>Simulated gate</h2>
     <div class="small muted">Closed ← → Open · <span id="simTxt"></span></div>
+    <div class="small" id="simIo" style="margin-top:4px"></div>
     <div class="track" id="simTrack"><div class="post"></div><div class="gate" id="simGate"></div><div class="obs hide" id="simObs"></div></div>
   </div>
   <div class="card">
@@ -467,7 +468,7 @@ async function changePass(){
 }
 function saveWifi(){const o={wifiSsid:val('gSsid')};if(!o.wifiSsid){$('#gErr3').textContent='Enter the network name';return}if(val('gWpass'))o.wifiPass=val('gWpass');if(confirm('Switch the board to '+o.wifiSsid+'? This page may lose its connection.'))save(o,'gErr3')}
 function saveMqtt(){const o={mqttHost:val('gMqHost'),mqttPort:val('gMqPort'),mqttUser:val('gMqUser'),mqttBase:val('gMqBase'),haDiscovery:$('#gHa').checked?1:0};if(val('gMqPass'))o.mqttPass=val('gMqPass');save(o,'gErr4')}
-function saveHw(){const v=val('gHw');if(v==CFG.dev.hwModeRunning){toast('already running that way');return}if(confirm(v==1?'Switch to SIMULATOR mode and restart? Only for a DevKit with no gate connected.':'Switch to GateMaster BOARD mode and restart?'))save({hwMode:v},'gErr8')}
+function saveHw(){const v=val('gHw');if(v==CFG.dev.hwModeRunning){toast('already running that way');return}if(confirm(v==0?'Switch to GateMaster BOARD mode and restart?':(v==2?'Switch to SIMULATOR WITH REAL INPUTS and restart?':'Switch to SIMULATOR mode and restart?')+' Only for a DevKit with no gate connected.'))save({hwMode:v},'gErr8')}
 async function factory(){if(!confirm('Factory reset: erase Wi-Fi, password, MQTT and name? Gate parameters are kept.'))return;if(!confirm('Really? The board restarts and opens its setup network.'))return;try{await api('/api/factory-reset',{method:'POST'});toast('Factory reset – restarting')}catch(e){toast(e.message,1)}}
 async function loadUpdate(){try{renderUpdate(await api('/api/update'))}catch(e){}}
 function renderUpdate(u){
@@ -506,6 +507,7 @@ function renderSim(m){
   for(const k in m.held){const b=$('#sh-'+k);if(b)b.classList.toggle('on',m.held[k])}
   $('#simEf').classList.toggle('on',m.edgeFault);$('#simDip').checked=m.dip1;$('#simLim').textContent='now '+m.limits;
   if(document.activeElement!==$('#simTravel'))$('#simTravel').value=m.travel;
+  $('#simIo').innerHTML=m.realInputs?'<b>Real inputs:</b> contact inputs are read from the DevKit pins (limits stay simulated)'+(m.realButtons?'; OPEN/STOP/CLOSE from the GPIO 39 ladder.':'; board buttons simulated (no pull-up found on GPIO 39 at start).')+' Buttons here still force an input active.':'';
 }
 init();
 </script>

@@ -5,6 +5,8 @@
 // simulator backend (hal_sim.cpp)
 namespace simhw {
 void begin();
+void useRealInputs();
+bool realLadder();
 bool contactClosed(InputId i);
 uint16_t buttonMv();
 int edgeMv();
@@ -67,13 +69,14 @@ static void drive(Winding w) {
 #endif
 
 namespace hal {
-static bool simMode = false;
+static bool simMode = false, simIo = false;
 static Winding drv = WIND_OFF;
 static bool lockS = false, relayS = false, alarmS = false;
 static bool edgeAnalogS = false;
 
 void begin(uint8_t hwMode) {
-  simMode = hwMode == HW_SIM;
+  simMode = hwMode == HW_SIM || hwMode == HW_SIM_IO;
+  simIo = hwMode == HW_SIM_IO;
 #ifdef HOST_TEST
   simMode = true;
 #else
@@ -85,9 +88,14 @@ void begin(uint8_t hwMode) {
   if (simMode) pinMode(PIN_BOOT, INPUT_PULLUP);
 #endif
   if (simMode) simhw::begin();
+#ifndef HOST_TEST
+  if (simIo) simhw::useRealInputs();
+#endif
 }
 
 bool sim() { return simMode; }
+bool simRealInputs() { return simIo; }
+bool simRealButtons() { return simIo && simhw::realLadder(); }
 
 bool contactClosed(InputId i) {
   if (simMode) return simhw::contactClosed(i);

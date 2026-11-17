@@ -40,7 +40,7 @@ enum LimitType : uint8_t { LIMIT_AUTO = 0, LIMIT_NO = 1, LIMIT_NC = 2 };
 enum LockMode : uint8_t { LOCK_NONE = 0, LOCK_MAG = 1, LOCK_SOLENOID = 2 };
 enum RelayMode : uint8_t { RELAY_OFF = 0, RELAY_PULSE_ON_OPEN = 1, RELAY_WHILE_MOVING = 2,
                            RELAY_FORCED_OPEN = 3, RELAY_NOT_CLOSED = 4 };
-enum HwMode : uint8_t { HW_BOARD = 0, HW_SIM = 1 };
+enum HwMode : uint8_t { HW_BOARD = 0, HW_SIM = 1, HW_SIM_IO = 2 };   // HW_SIM_IO: simulated gate, real input pins
 
 extern const ParamDef PARAMS[P_COUNT];
 

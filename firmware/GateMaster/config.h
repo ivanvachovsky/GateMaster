@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 #define FW_NAME    "GateMaster"
-#define FW_VERSION "0.2.0"
+#define FW_VERSION "0.2.1"
 
 // Hardware mode on the very first start (no saved setting yet): 0 = GateMaster board, 1 = Simulator.
 // The DevKit build on the flashing page is compiled with -DDEFAULT_HW_MODE=1. Saved at first start,

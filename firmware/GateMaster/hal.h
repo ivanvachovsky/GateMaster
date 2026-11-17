@@ -6,7 +6,9 @@
 
 namespace hal {
 void begin(uint8_t hwMode);        // HW_BOARD or HW_SIM; outputs off and heartbeat on at once
-bool sim();                        // running the simulator backend?
+bool sim();                        // running the simulator backend (either simulator mode)?
+bool simRealInputs();              // simulator with the real input pins
+bool simRealButtons();             // ... and the real button ladder on GPIO 39 (pull-up found at start)
 
 // raw inputs (not debounced)
 bool contactClosed(InputId i);     // true = contact closed (pin LOW on the board)

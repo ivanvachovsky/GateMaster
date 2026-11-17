@@ -79,7 +79,7 @@ void collect(std::vector<Reading>& o) {
   N("mid_position", s.midPct < 0 ? "-1" : String(s.midPct, 0));
   // device
   S("firmware", FW_VERSION);
-  S("hardware", hal::sim() ? "simulator" : "board");
+  S("hardware", !hal::sim() ? "board" : hal::simRealInputs() ? "simulator + real inputs" : "simulator");
   N("uptime", String(s.uptimeS));
   S("reset_reason", resetReason());
   N("free_heap", String(ESP.getFreeHeap()));
