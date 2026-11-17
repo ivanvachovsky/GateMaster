@@ -1,12 +1,14 @@
-# Every push: PC gate tests + firmware build. A tag vX.Y.Z also publishes the flashing page and the
-# release files to GitHub Pages (Settings -> Pages -> Source: GitHub Actions).
+# Every push: PC gate tests + firmware build. Publishing a GitHub release (tag vX.Y.Z, matching
+# FW_VERSION) also publishes the flashing page and the update files to GitHub Pages
+# (Settings -> Pages -> Source: GitHub Actions) and attaches the .bin files to the release.
 name: build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   pull_request:
   workflow_dispatch:
+  release:
+    types: [published]
 permissions:
   contents: write
   pages: write
@@ -29,22 +31,29 @@ jobs:
           arduino-cli lib install "PubSubClient@2.8"
       - name: Build
         run: ARDUINO_CLI=arduino-cli sh tools/build.sh
-      - name: Pack release files
-        run: python3 tools/release.py "$(git tag -l --format='%(contents:subject)' ${GITHUB_REF_NAME} 2>/dev/null || true)"
-      - name: Check the version matches the tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: test "v$(python3 -c "import json;print(json.load(open('docs/version.json'))['version'])")" = "${GITHUB_REF_NAME}"
+      - name: Pack release files (release notes = the release's title)
+        env:
+          NOTES: ${{ github.event.release.name }}
+        run: python3 tools/release.py "$NOTES"
+      - name: Check the version matches the release tag
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          V="v$(python3 -c "import json;print(json.load(open('docs/version.json'))['version'])")"
+          test "$V" = "$TAG" || { echo "FW_VERSION is $V but the release tag is $TAG"; exit 1; }
       - uses: actions/upload-pages-artifact@v3
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name == 'release'
         with: { path: docs }
-      - name: GitHub release with the firmware files
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Attach the firmware files to the release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.release.tag_name }}
           files: |
             docs/firmware/*.bin
   deploy:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
     needs: build
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.d.outputs.page_url }}" }

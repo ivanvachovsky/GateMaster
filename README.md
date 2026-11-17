@@ -81,16 +81,19 @@ python3 tools/release.py "notes"   # docs/firmware/*.bin, docs/manifest.json, do
 
 ## Release
 
-1. Raise `FW_VERSION` in `firmware/GateMaster/config.h`.
-2. Commit, then tag with the same version and a one-line note as the tag message: `git tag -a v0.2.1 -m "what changed"`.
-3. Push the tag: `git push --tags`.
+1. Raise `FW_VERSION` in `firmware/GateMaster/config.h` and push to `main`.
+2. On GitHub, open **Releases → Draft a new release**:
+   - create the tag `v` + the version (e.g. `v0.2.1`);
+   - give it a one-line title (it becomes the update notes the boards show);
+   - click **Publish release**.
 
 GitHub Actions then:
 
 - runs the tests;
-- builds the firmware;
-- publishes the flashing page and update files to GitHub Pages (Settings → Pages → Source: GitHub Actions);
-- attaches the .bin files to a GitHub release.
+- builds both variants;
+- checks the tag matches `FW_VERSION`;
+- publishes the flashing page and update files to GitHub Pages;
+- attaches the .bin files to the release.
 
 Boards in the field see the update with their next daily check, or when someone presses **Check for update**. They never install by themselves.
 
