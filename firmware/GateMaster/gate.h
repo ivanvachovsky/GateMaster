@@ -23,7 +23,8 @@ struct GateStatus {
   bool movingOpen;            // direction of the current / last run
   float posPct;               // estimated position 0..100, -1 = not known
   int16_t autoCloseLeftS;     // -1 = no countdown
-  bool holdOpen, autoClose, lockOutMode;
+  bool holdOpen, autoClose, lockOutMode;   // holdOpen = an "Open for N minutes" is running
+  int16_t holdLeftMin;                     // minutes left of it, -1 = none
   float currentA, peakA, baselineA, thresholdA;
   uint8_t obstructionsThisRun;
   bool inClosed[IN_COUNT], inActive[IN_COUNT];
@@ -43,7 +44,9 @@ struct GateStatus {
 
 namespace gate {
 void begin();                                              // starts the control task
-CmdResult command(Cmd c, CmdSource src, uint32_t waitMs = 300);   // thread-safe, queued, waits for the result
+// thread-safe, queued, waits for the result. arg: minutes for CMD_HOLD_ON (0 = the default parameter)
+CmdResult command(Cmd c, CmdSource src, uint32_t waitMs = 300, uint16_t arg = 0);
+Cmd parseCmd(const String& s, uint16_t& arg);              // "hold_on 30", "hold_on:30", "open"...
 GateStatus snapshot();
 bool idle();                                               // motor off and nothing pending
 void setUpdating(bool on);                                 // firmware update: movement refused, STOP and safety still work
@@ -60,7 +63,7 @@ void graph(bool last, Graph& out, uint16_t from);          // copies samples fro
 
 #ifdef HOST_TEST
 void tickOnce();
-CmdResult commandNow(Cmd c, CmdSource src);
+CmdResult commandNow(Cmd c, CmdSource src, uint16_t arg = 0);
 void powerCutForTest();
 #endif
 }

@@ -83,7 +83,9 @@ static const Ent ENTS[] = {
   {"button", "partial", "Partial open", "\"cmd_t\":\"~/cmd\",\"pl_prs\":\"partial\",\"ic\":\"mdi:gate-arrow-right\""},
   {"button", "reset", "Reset alarm", "\"cmd_t\":\"~/cmd\",\"pl_prs\":\"reset\",\"ic\":\"mdi:alarm-off\""},
   {"button", "update_check", "Check for update", "\"cmd_t\":\"~/cmd\",\"pl_prs\":\"update_check\",\"ent_cat\":\"config\""},
-  {"switch", "hold_open", "Hold open", "\"cmd_t\":\"~/cmd\",\"pl_on\":\"hold_on\",\"pl_off\":\"hold_off\",\"stat_t\":\"~/status/hold_open\",\"stat_on\":\"ON\",\"stat_off\":\"OFF\",\"ic\":\"mdi:gate-open\""},
+  {"switch", "hold_open", "Open for N minutes", "\"cmd_t\":\"~/cmd\",\"pl_on\":\"hold_on\",\"pl_off\":\"hold_off\",\"stat_t\":\"~/status/hold_open\",\"stat_on\":\"ON\",\"stat_off\":\"OFF\",\"ic\":\"mdi:gate-open\""},
+  {"sensor", "hold_left", "Open for: minutes left", "\"stat_t\":\"~/status/hold_left\",\"unit_of_meas\":\"min\",\"val_tpl\":\"{{ value if value | int(-1) >= 0 else none }}\",\"ic\":\"mdi:timer-sand\""},
+  {"number", "hold_min", "Open for (minutes)", "\"cmd_t\":\"~/set/holdMin\",\"stat_t\":\"~/config\",\"val_tpl\":\"{{ value_json.holdMin }}\",\"min\":1,\"max\":1440,\"step\":1,\"unit_of_meas\":\"min\",\"mode\":\"box\",\"ent_cat\":\"config\""},
   {"switch", "auto_close", "Auto-close", "\"cmd_t\":\"~/cmd\",\"pl_on\":\"autoclose_on\",\"pl_off\":\"autoclose_off\",\"stat_t\":\"~/status/auto_close\",\"stat_on\":\"ON\",\"stat_off\":\"OFF\",\"ic\":\"mdi:timer-outline\""},
   {"switch", "lock_out", "Lock out", "\"cmd_t\":\"~/cmd\",\"pl_on\":\"lockout_on\",\"pl_off\":\"lockout_off\",\"stat_t\":\"~/status/lock_out\",\"stat_on\":\"ON\",\"stat_off\":\"OFF\",\"ic\":\"mdi:lock\""},
   {"sensor", "current", "Motor current", "\"stat_t\":\"~/status/current\",\"unit_of_meas\":\"A\",\"dev_cla\":\"current\",\"stat_cla\":\"measurement\""},
@@ -144,9 +146,10 @@ static void onMessage(char* topicC, byte* payload, unsigned int len) {
     if (c == "update_check") { ota::requestCheck(); r = "ok"; }
     else if (c == "update_install") { String e; r = ota::requestInstall(e) ? "ok" : e; }
     else {
-      Cmd cmd = gate::cmdFromName(c);
+      uint16_t arg = 0;
+      Cmd cmd = gate::parseCmd(c, arg);               // "hold_on 30" = open for 30 minutes
       if (cmd == CMD_NONE) r = "unknown command " + c;
-      else r = gate::resultText(gate::command(cmd, SRC_MQTT));
+      else r = gate::resultText(gate::command(cmd, SRC_MQTT, 300, arg));
     }
     pub(base + "/cmd/result", r, false);
   } else if (topic == base + "/update") {

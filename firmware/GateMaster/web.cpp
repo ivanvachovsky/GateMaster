@@ -146,9 +146,11 @@ static void hCmd() {
     if (!gate::idle()) { fail(409, "not while the gate is moving"); return; }
     eventlog::add("restart requested (web)"); ota::rebootWhenIdle(800); ok(); return;
   }
-  Cmd cmd = gate::cmdFromName(c);
+  uint16_t arg = 0;
+  Cmd cmd = gate::parseCmd(c, arg);                 // "hold_on 30" = open for 30 minutes
+  if (srv.hasArg("minutes")) arg = (uint16_t)constrain(srv.arg("minutes").toInt(), 0L, 1440L);
   if (cmd == CMD_NONE) { fail(400, "unknown command " + c); return; }
-  CmdResult r = gate::command(cmd, SRC_WEB);
+  CmdResult r = gate::command(cmd, SRC_WEB, 300, arg);
   if (r == RES_OK) ok(); else fail(409, gate::resultText(r));
 }
 

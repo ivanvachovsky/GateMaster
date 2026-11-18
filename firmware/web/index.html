@@ -109,6 +109,7 @@ canvas{width:100%;height:220px;display:block}
   <button data-t="status">Status</button>
   <button data-t="params">Parameters</button>
   <button data-t="general">General</button>
+  <button data-t="pinout">Pinout</button>
   <button data-t="sim" class="hide" id="tabSim">Simulator</button>
 </nav>
 <main>
@@ -133,8 +134,9 @@ canvas{width:100%;height:220px;display:block}
   </div>
   <div class="card">
     <h2>Modes</h2>
-    <div class="sw"><div>Hold open<small>Opens and stays open until turned off. Survives a power cut.</small></div>
-      <label class="tog"><input type="checkbox" id="mHold" onchange="cmd(this.checked?'hold_on':'hold_off')"><span></span></label></div>
+    <div class="sw" style="align-items:flex-start"><div>Open for<small id="mHoldTxt">Opens and stays open for the minutes chosen, then closes by itself. Survives a power cut.</small></div>
+      <div class="row" style="flex:none"><input type="number" id="mHoldMin" min="1" max="1440" style="width:80px"><span class="muted">min</span>
+      <button class="b" onclick="cmd('hold_on '+(val('mHoldMin')||''))">Start</button><button class="b hide" id="mHoldOff" onclick="cmd('hold_off')">Cancel</button></div></div>
     <div class="sw"><div>Auto-close<small>Closes by itself after the close delay.</small></div>
       <label class="tog"><input type="checkbox" id="mAc" onchange="cmd(this.checked?'autoclose_on':'autoclose_off')"><span></span></label></div>
     <div class="sw"><div>Lock out<small>EXIT and radio ignored. Buttons, web and MQTT still work.</small></div>
@@ -250,6 +252,16 @@ canvas{width:100%;height:220px;display:block}
 </div>
 </section>
 
+<!-- ============================== Pinout ============================== -->
+<section id="t-pinout">
+<div class="card">
+  <h2>GPIO pinout <span class="muted small" id="pinMode"></span></h2>
+  <p class="small muted">Every ESP32 pin GateMaster uses, with what the firmware sees right now. <b>Now</b> shows each contact input as active/clear and its raw contact (open/closed). <b>Read</b> shows whether this hardware mode reads the pin.</p>
+  <table id="pinTbl"></table>
+  <p class="small muted" style="margin-top:10px">Card edge, power fingers: TAB1 AC-N (mains neutral) · TAB2 120 VAC line · TAB13 24 VDC · TAB14 24 V COM. Strap pins (0, 2, 5, 12) must keep their boot level; GPIO 34–39 are input-only with no internal pull-ups.</p>
+</div>
+</section>
+
 <!-- ============================== Simulator ============================== -->
 <section id="t-sim">
 <div class="grid">
@@ -327,7 +339,7 @@ async function init(){
   setInterval(()=>{if(tab=='status')pollLog()},3000);
   setInterval(()=>{if(tab=='general')loadUpdate()},5000);
 }
-function show(t){tab=t;$$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));$$('section').forEach(s=>s.classList.toggle('on',s.id=='t-'+t));if(t=='status'){pollLog();pollGraph(true);drawGraph()}if(t=='general')loadUpdate()}
+function show(t){tab=t;$$('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t==t));$$('section').forEach(s=>s.classList.toggle('on',s.id=='t-'+t));if(t=='status'){pollLog();pollGraph(true);drawGraph()}if(t=='general')loadUpdate();if(t=='pinout')renderPinout(ST)}
 
 async function firstPass(){
   const a=val('p1'),b=val('p2');
@@ -369,7 +381,10 @@ async function poll(){
   const pos=s.position>=0?s.position+' %':'position unknown';
   $('#cPos').textContent=pos+(s.direction!='none'?' · '+s.direction:'');
   $('#cBar').style.width=(s.position>=0?s.position:0)+'%';
-  $('#mHold').checked=s.hold_open;$('#mAc').checked=s.auto_close;$('#mLock').checked=s.lock_out;
+  $('#mAc').checked=s.auto_close;$('#mLock').checked=s.lock_out;
+  $('#mHoldOff').classList.toggle('hide',!s.hold_open);
+  $('#mHoldTxt').innerHTML=s.hold_open?'<b>Open for another '+s.hold_left+' min</b>, then it closes by itself.':'Opens and stays open for the minutes chosen, then closes by itself. Survives a power cut.';
+  if(CFG&&!$('#mHoldMin').value&&document.activeElement!==$('#mHoldMin'))$('#mHoldMin').value=CFG.params.holdMin;
   $('#cAc').textContent=s.autoclose_left>=0?s.autoclose_left+' s':'–';
   $('#cEye').innerHTML=s['input/safety']?'<span class="dot on"></span>beam broken':'<span class="dot ok"></span>clear';
   $('#cEdge').innerHTML=s['input/edge']?'<span class="dot on"></span>'+(s['fault/edge_wiring']?'wiring fault':'pressed'):'<span class="dot ok"></span>clear';
@@ -377,7 +392,7 @@ async function poll(){
   if(s['fault/max_run'])F.push('max run time');if(s['fault/both_limits'])F.push('both limits active (check SW6 / DIP2)');if(s['fault/forced_open'])F.push('forced open');if(s['fault/edge_wiring'])F.push('edge wiring');
   $('#cFault').innerHTML=F.length?'<span style="color:var(--bad)">'+F.join('<br>')+'</span>':'none';
   if(tab=='status'){
-    kv($('#sGate'),[['State',st],['Position',pos],['Direction',s.direction],['Auto-close in',s.autoclose_left>=0?s.autoclose_left+' s':'–'],['Hold open',yes(s.hold_open)],['Auto-close',s.auto_close?'on':'off'],['Lock out',s.lock_out?'on':'off']]);
+    kv($('#sGate'),[['State',st],['Position',pos],['Direction',s.direction],['Auto-close in',s.autoclose_left>=0?s.autoclose_left+' s':'–'],['Open for N minutes',s.hold_open?s.hold_left+' min left':'off'],['Auto-close',s.auto_close?'on':'off'],['Lock out',s.lock_out?'on':'off']]);
     kv($('#sMotor'),[['Winding',s.motor],['Current',s.current.toFixed(2)+' A'],['Peak (last run)',s.peak.toFixed(2)+' A'],['Learned running current',s.baseline.toFixed(2)+' A'],['Obstruction threshold',s.threshold.toFixed(2)+' A'],['Obstructions this run',s['fault/obstructions_run']]]);
     for(const [k] of INPUTS){const a=s['input/'+k];$('#in-'+k).innerHTML=`<span class="dot ${a?(SAFETY_IN[k]?'bad':'on'):''}"></span>${a?'active':'clear'}`;$('#ic-'+k).textContent=s['input/'+k+'/contact']}
     kv($('#sLim'),[['Open limit',yes(s.open_limit)],['Closed limit',yes(s.closed_limit)],['Limit switch type',s.limit_type],['DIP1',s.dip1?'ON':'OFF'],['Board button',s.button],['LOCK output',s.lock?'on':'off'],['RELAY-1',s.relay?'on':'off'],['ALARM buzzer',s.alarm?'ON':'off'],['Edge voltage',s.edge_mv>=0?s.edge_mv+' mV':'digital']]);
@@ -388,6 +403,7 @@ async function poll(){
   }
   if(tab=='general'){$('#gIp').textContent=s.ip;$('#gMac').textContent=s.mac;$('#gWifi').textContent=s.ssid?s.ssid+' ('+s.rssi+' dBm)':'not connected';$('#gMq').textContent=s.mqtt?'connected':'off';}
   if(s.sim)renderSim(s.sim);
+  if(tab=='pinout')renderPinout(s);
 }
 
 // ---------------------------------------------------------------- graph
@@ -489,6 +505,55 @@ async function restore(){
   const f=$('#gRest').files[0];if(!f){$('#gErr7').textContent='Choose a backup file';return}
   const t=await f.text();
   try{const r=await api('/api/restore',{method:'POST',headers:{'Content-Type':'text/plain'},body:t});$('#gErr7').textContent='Restored '+r.applied+' values'+(r.skipped?' (skipped: '+r.skipped+')':'');toast('Restored');loadConfig()}catch(e){$('#gErr7').textContent=e.message}
+}
+
+// ---------------------------------------------------------------- pinout
+// [gpio, function, direction, card edge / terminal, notes, kind, key]   kind: in = contact input, out, ana, sys
+const PINS=[
+ [25,'MOT_A: MOTOR-1 drive','out','TAB4 MOTOR-1 (opto U3, triac Q1)','never on together with 26; 0.6 s off before reversing','mot1'],
+ [26,'MOT_B: MOTOR 2 drive','out','TAB5 MOTOR 2 (opto U4, triac Q2)','','mot2'],
+ [27,'LOCK','out','TAB3 LOCK (opto U5, triac Q3), 120 VAC','','lock'],
+ [21,'RELAY-1','out','J6 COM / N/O / N/C','dry contact','relay'],
+ [12,'ALARM buzzer','out','J5 ALARM+ / ALARM−','strap pin: kept LOW at boot','alarm'],
+ [2,'STAT LED + heartbeat','out','front-panel STAT LED; hardware watchdog','1 kHz PWM, always running (DevKit: blue LED)','hb'],
+ [23,'TRIP_RST','out','overcurrent latch reset','pulled LOW 10 ms to clear; otherwise input','trip'],
+ [36,'Motor current','ana','ACS724 via 10k/22k divider','input-only; 100 mV/A','cur'],
+ [39,'Buttons + DIP1','ana','OPEN / STOP / CLOSE ladder, DIP1','input-only, no pull-up','btn'],
+ [13,'3BT','in','TAB6','single button: open-stop-close','3bt'],
+ [4,'LIMIT 1','in','TAB7','also hardware cut-off (via SW6)','limit1'],
+ [16,'LIMIT 2','in','TAB8','also hardware cut-off (via SW6)','limit2'],
+ [17,'PED-SW','in','TAB9','report only','ped'],
+ [34,'SAFETY (photo-eye)','in','TAB10','input-only, no internal pull-up','safety'],
+ [32,'PHANTOM','in','TAB11','report only','phantom'],
+ [33,'EXIT LOOP / OPEN','in','TAB12','','exit'],
+ [19,'RESET (radio)','in','J1-1 (J1-2 COM)','','reset'],
+ [18,'RELAY (radio)','in','J2-1 (J2-2 +24 V)','','radio'],
+ [35,'EDGE (safety edge)','in','J3-1 (J3-2 COMMON)','input-only, no pull-up; analog for 8.2 kΩ','edge'],
+ [5,'MID (reed)','in','J4-1 (J4-3 COM)','strap pin','mid'],
+ [22,'SPARE','in','J4-2 (J4-3 COM)','report only','spare'],
+ [0,'BOOT','sys','BOOT button, J7 IO0','strap pin; DevKit factory reset','boot'],
+ [1,'TX0','sys','USB-C (CH340C) / J7 TX','serial log, flashing, Improv',''],
+ [3,'RX0','sys','USB-C (CH340C) / J7 RX','serial, flashing, Improv','']];
+function renderPinout(s){
+  if(!s)return;
+  const hw=s.hardware, board=hw=='board', simIo=hw.indexOf('real')>=0, sm=s.sim||{};
+  $('#pinMode').textContent='· hardware mode: '+hw;
+  const reads=p=>{const k=p[5];
+    if(p[2]=='in')return board||(simIo&&k!='limit1'&&k!='limit2');
+    if(k=='btn')return board||(simIo&&sm.realButtons);
+    if(k=='cur')return board;
+    if(k=='boot')return !board;
+    return p[2]=='sys'?true:null};
+  const drives=p=>p[2]=='out'?(board||p[5]=='hb'):null;
+  const live=p=>{const k=p[5];
+    if(p[2]=='in')return `<span class="dot ${s['input/'+k]?(k=='safety'||k=='edge'?'bad':'on'):''}"></span>${s['input/'+k]?'active':'clear'} · ${s['input/'+k+'/contact']}`;
+    switch(k){case'mot1':return s.motor=='MOTOR-1'?'<b>ON</b>':'off';case'mot2':return s.motor=='MOTOR 2'?'<b>ON</b>':'off';
+      case'lock':return s.lock?'<b>ON</b>':'off';case'relay':return s.relay?'<b>ON</b>':'off';case'alarm':return s.alarm?'<b>ON</b>':'off';
+      case'hb':return '1 kHz';case'cur':return s.current.toFixed(2)+' A';case'btn':return s.button_mv+' mV · '+s.button+(s.dip1?' · DIP1 ON':'');
+      default:return '–'}};
+  const yn=v=>v===null?'':v?'yes':'<span class="muted">no</span>';
+  $('#pinTbl').innerHTML='<tr><th>GPIO</th><th>Function</th><th>Dir</th><th>Connects to</th><th>Now</th><th>Read / driven</th><th>Notes</th></tr>'+
+    PINS.map(p=>`<tr><td><b>${p[0]}</b></td><td>${p[1]}</td><td>${p[2]=='ana'?'analog in':p[2]=='sys'?'system':p[2]}</td><td>${p[3]}</td><td>${live(p)}</td><td>${p[2]=='out'?yn(drives(p)):yn(reads(p))}</td><td class="muted small">${p[4]}</td></tr>`).join('');
 }
 
 // ---------------------------------------------------------------- simulator

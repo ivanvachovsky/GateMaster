@@ -18,17 +18,17 @@ def status():
     t = time.time() - T0
     pos = min(100, t * 5) if t < 20 else 100
     s = {"state": "opening" if pos < 100 else "open", "position": round(pos), "direction": "opening" if pos < 100 else "none",
-         "autoclose_left": -1 if pos < 100 else 12, "hold_open": False, "auto_close": True, "lock_out": False,
+         "autoclose_left": -1 if pos < 100 else 12, "hold_open": True, "hold_left": 42, "auto_close": True, "lock_out": False,
          "motor": "MOTOR-1" if pos < 100 else "off", "current": 4.52 if pos < 100 else 0, "peak": 9.0, "baseline": 4.5,
          "threshold": 6.69, "open_limit": pos >= 100, "closed_limit": pos <= 0, "limit_type": "NC", "dip1": False}
     for k in INPUTS:
         s["input/" + k] = held.get(k, False)
         s["input/" + k + "/contact"] = "closed" if k in ("limit1", "safety", "edge") else "open"
-    s.update({"edge_mv": -1, "button": "none", "lock": False, "relay": False, "alarm": False, "fault/lockout": False,
+    s.update({"edge_mv": -1, "button": "none", "button_mv": 2890, "lock": False, "relay": False, "alarm": False, "fault/lockout": False,
               "fault/obstructions_run": 0, "fault/no_current": False, "fault/motor_latched": False, "fault/max_run": False,
               "fault/both_limits": False, "fault/forced_open": False, "fault/edge_wiring": False, "cycles": 37, "obstructions": 2,
               "last_obstruction": 1763340000, "travel_open": 20.1, "travel_close": 19.8, "mid_position": 50, "firmware": "0.2.0",
-              "hardware": "simulator", "uptime": int(t) + 3600, "reset_reason": "power on", "free_heap": 182000, "name": "Driveway gate",
+              "hardware": "simulator + real inputs", "uptime": int(t) + 3600, "reset_reason": "power on", "free_heap": 182000, "name": "Driveway gate",
               "ssid": "HomeNet", "rssi": -58, "ip": "192.168.1.77", "mac": "24:6F:28:A1:B2:C3", "host": "gatemaster-a1b2.local",
               "mqtt": True, "setup_network": False, "update_available": False, "latest_version": "0.2.0"})
     s["sim"] = {"pos": pos, "amps": s["current"], "travel": 20, "limits": "NC", "obstacle": 60, "obstacleBlocksOpening": False,

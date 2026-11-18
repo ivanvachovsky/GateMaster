@@ -21,11 +21,12 @@ static GateState st() { return S().state; }
 static float pos() { return sim::testPos(); }
 #define CHECK(cond, msg) do { if (cond) { passes++; printf("  ok   %s\n", msg); } else { fails++; printf("  FAIL %s  (state=%s pos=%.2f motor=%d)\n", msg, gate::stateName(st()), pos(), hal::driving()); } } while (0)
 static void pulse(const char* in) { sim::setInput(in, sim::ACT_PULSE); run(0.5); }
-static CmdResult cmd(Cmd c, CmdSource s = SRC_WEB) { CmdResult r = gate::commandNow(c, s); run(0.05); return r; }
+static CmdResult cmd(Cmd c, CmdSource s = SRC_WEB, uint16_t arg = 0) { CmdResult r = gate::commandNow(c, s, arg); run(0.05); return r; }
 static void setP(ParamId p, float v) { params::setValue(p, v); }
+static void openAndWait() { cmd(CMD_OPEN); for (int i = 0; i < 400 && st() != ST_OPEN; i++) run(0.1); }
 static void openFully() { if (st() != ST_OPEN) { cmd(CMD_OPEN); run(25); } }
 static void closeFully() { if (st() != ST_CLOSED) { cmd(CMD_CLOSE); run(25); } }
-static void reboot() { gate::powerCutForTest(); sim::testPowerCut(); gate::begin(); }
+static void reboot() { gate::powerCutForTest(); sim::testPowerCut(); setP(P_CLOSE_DELAY, 10); gate::begin(); }
 
 int main() {
   params::load();
@@ -227,10 +228,10 @@ int main() {
   run(7);
   CHECK(st() == ST_OPEN, "fully open");
   closeFully(); cmd(CMD_OPEN); run(5);
-  pulse("edge"); run(3);
-  CHECK(st() == ST_STOPPED && S().obstructionsThisRun == 1, "edge while opening: brief reverse, then stop");
-  cmd(CMD_OPEN); run(25);
-  CHECK(st() == ST_OPEN && S().obstructionsThisRun == 0, "opens fully after");
+  pulse("edge"); run(1);
+  CHECK(st() == ST_OPENING && S().obstructionsThisRun == 0, "edge while opening: ignored (closing-side edge), keeps opening");
+  run(20);
+  CHECK(st() == ST_OPEN, "opens fully");
   setP(P_EDGE_TYPE, CONTACT_8K2); run(0.2);
   sim::setEdgeFault(true); run(0.2);
   CHECK(S().edgeFault && S().inActive[IN_EDGE], "monitored edge: wire break reported, counts as active");
@@ -248,7 +249,7 @@ int main() {
   bool stillSqueezedWhileOpening = false;
   for (int i = 0; i < 200; i++) { run(0.01); if (hal::driving() == WIND_M1 && S().inActive[IN_EDGE]) stillSqueezedWhileOpening = true; }
   CHECK(stillSqueezedWhileOpening, "edge still squeezed for a moment while reopening (realistic)");
-  CHECK(st() == ST_OPENING && S().obstructionsThisRun == 1, "only one obstruction counted");
+  CHECK(st() == ST_OPENING && S().obstructionsThisRun == 0, "edge obstruction reverses but never counts toward lockout");
   run(12);
   CHECK(st() == ST_OPEN && S().state != ST_LOCKOUT, "fully open, no false lockout");
   sim::obstacle(-1, false);
@@ -273,10 +274,10 @@ int main() {
   run(11); run(6);
   reboot(); run(5);
   float pc = pos();
-  CHECK(st() == ST_UNKNOWN && hal::driving() == WIND_OFF && pc > 0.05f && pc < 0.95f, "cut part-way: waits, no movement");
-  cmd(CMD_CLOSE); run(1);
-  CHECK(st() == ST_OPENING, "first command opens");
-  run(25); closeFully();
+  CHECK(st() == ST_UNKNOWN && hal::driving() == WIND_OFF && pc > 0.05f && pc < 0.95f && S().autoCloseLeftS > 0, "cut part-way: no movement, countdown running");
+  run(6);
+  CHECK(st() == ST_CLOSING && fabsf(pos() - pc) < 0.2f, "after the close delay it closes from where it is");
+  run(20);
   CHECK(st() == ST_CLOSED, "closed");
 
   printf("S15 radio open-stop-close, board buttons, STOP held 3 s\n");
@@ -317,6 +318,101 @@ int main() {
   CHECK(learned::get().limitDetected == 1 && st() == ST_OPEN, "detected as NO, opened");
   run(11); run(22);
   CHECK(st() == ST_CLOSED, "auto-closed");
+
+  printf("S19 the pizza case: edge touches cannot lock the gate open\n");
+  cmd(CMD_OPEN); run(12);
+  pulse("edge"); run(1);
+  CHECK(st() == ST_OPENING, "touch while opening: ignored");
+  run(12);
+  CHECK(st() == ST_OPEN, "open");
+  run(11); run(3);
+  CHECK(st() == ST_CLOSING, "auto-close");
+  pulse("edge"); run(1);
+  CHECK(st() == ST_OPENING && S().obstructionsThisRun == 0, "touch while closing: reverses to open, not counted");
+  run(5); pulse("edge"); run(10);
+  CHECK(st() == ST_OPEN && S().state != ST_LOCKOUT, "more touches: still no lockout");
+  run(11); run(22);
+  CHECK(st() == ST_CLOSED, "left alone, it auto-closes");
+
+  printf("S20 stopped part-way: closes after the delay\n");
+  cmd(CMD_OPEN); run(5); cmd(CMD_STOP); run(1);
+  CHECK(st() == ST_STOPPED && S().autoCloseLeftS > 0, "STOP part-way starts the countdown");
+  run(10);
+  CHECK(st() == ST_CLOSING, "closes from where it stopped");
+  run(10);
+  CHECK(st() == ST_CLOSED, "closed");
+
+  printf("S21 STOP at open restarts the countdown\n");
+  closeFully(); openAndWait(); run(6);
+  int16_t before = S().autoCloseLeftS;
+  cmd(CMD_STOP);
+  CHECK(before > 0 && before <= 5 && S().autoCloseLeftS >= 9, "countdown restarted, not cancelled");
+  run(11); run(22);
+  CHECK(st() == ST_CLOSED, "closed");
+
+  printf("S22 Open for N minutes\n");
+  CHECK(cmd(CMD_HOLD_ON, SRC_WEB, 2) == RES_OK, "open for 2 min accepted");
+  run(25);
+  CHECK(st() == ST_OPEN && S().holdOpen && S().holdLeftMin == 2 && S().autoCloseLeftS < 0, "open, 2 min left, no countdown");
+  run(90);
+  CHECK(st() == ST_OPEN && S().holdLeftMin == 1, "still open after 1.5 min");
+  run(8);
+  CHECK(!S().holdOpen && S().autoCloseLeftS > 0 && st() == ST_OPEN, "time up: normal close delay starts");
+  run(11); run(22);
+  CHECK(st() == ST_CLOSED, "closed");
+  cmd(CMD_HOLD_ON); run(25);
+  CHECK(S().holdLeftMin == params::geti(P_HOLD_MIN), "no time given: the default parameter (60 min)");
+  cmd(CMD_HOLD_OFF);
+  CHECK(!S().holdOpen && S().autoCloseLeftS > 0, "cancelled early: close delay starts");
+  run(11); run(22);
+
+  printf("S23 Open for N minutes survives a power cut\n");
+  cmd(CMD_HOLD_ON, SRC_WEB, 3); run(65);
+  reboot(); run(1);
+  CHECK(S().holdOpen && S().holdLeftMin == 2 && st() == ST_OPEN, "restored with the remaining time");
+  cmd(CMD_HOLD_OFF); run(11); run(22);
+  CHECK(st() == ST_CLOSED, "closed");
+
+  printf("S24 auto-close switched off: the deliberate exception\n");
+  cmd(CMD_AC_OFF); cmd(CMD_OPEN); run(5); cmd(CMD_STOP); run(30);
+  CHECK(st() == ST_STOPPED && hal::driving() == WIND_OFF, "stopped part-way stays with auto-close off");
+  cmd(CMD_AC_ON); run(11);
+  CHECK(st() == ST_CLOSING, "turned on: closes after the delay");
+  run(10);
+
+  printf("S25 photo-eye holds the countdown of a part-way gate\n");
+  cmd(CMD_OPEN); run(5); cmd(CMD_STOP);
+  sim::setInput("safety", sim::ACT_ON); run(25);
+  CHECK(st() == ST_STOPPED, "beam broken: waits");
+  sim::setInput("safety", sim::ACT_OFF); run(11);
+  CHECK(st() == ST_CLOSING, "beam clear: closes after the delay");
+  run(10);
+
+  printf("S26 lockout stays until reset, then closes\n");
+  sim::obstacle(0.6f, true);
+  cmd(CMD_OPEN); run(14); cmd(CMD_OPEN); run(14);
+  CHECK(st() == ST_LOCKOUT, "two motor-current obstructions: lockout");
+  run(60);
+  CHECK(st() == ST_LOCKOUT && hal::driving() == WIND_OFF, "no automatic movement in lockout");
+  sim::obstacle(-1, false);
+  pulse("reset"); run(11);
+  CHECK(st() == ST_CLOSING, "after Reset alarm the countdown runs and it closes");
+  run(15);
+
+  printf("S27 re-trigger guard: a dropout inside a press is one press\n");
+  closeFully();
+  sim::setInput("3bt", sim::ACT_ON); run(0.2); sim::setInput("3bt", sim::ACT_OFF); run(0.1);
+  sim::setInput("3bt", sim::ACT_ON); run(0.3); sim::setInput("3bt", sim::ACT_OFF); run(1);
+  CHECK(st() == ST_OPENING, "chattering 3BT: opens, does not stop");
+  run(25); closeFully();
+
+  printf("S28 repeated faults: auto-close stops retrying\n");
+  sim::setTravel(120); setP(P_MAX_RUN, 10);
+  cmd(CMD_OPEN); run(12);
+  CHECK(S().fTimeout && S().autoCloseLeftS > 0, "first fault: countdown still runs");
+  run(11); run(12);
+  CHECK(S().fTimeout && S().autoCloseLeftS < 0 && hal::driving() == WIND_OFF, "second fault in a row: no more automatic runs");
+  sim::setTravel(20); setP(P_MAX_RUN, 60); cmd(CMD_RESET); closeFully();
 
   printf("S18 event log\n");
   CHECK(eventlog::latest() > 50, "events recorded");

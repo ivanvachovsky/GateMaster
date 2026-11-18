@@ -24,7 +24,8 @@ ESP32 firmware for the **GateMaster** board, a drop-in replacement for the All-O
   - Wired inputs are handled by the control task (100 Hz, its own CPU core). The network never sits between an input and the motor.
 - **Controls:**
   - Open, Stop, Close, Partial open and Reset alarm.
-  - Hold open, Auto-close on/off and Lock out. Hold open and Lock out survive a power cut.
+  - Open for N minutes, Auto-close on/off and Lock out. Open for and Lock out survive a power cut.
+  - Auto-close rule: nothing leaves the gate open, fully or part-way, longer than the close delay, except Open for N minutes, EXIT held, or Auto-close switched off. The countdown waits while the photo-eye or edge is active, and pauses during lockout, a latched motor fault or a firmware update.
 - **Web page** (stored in the firmware) with four tabs:
   - **Controls**.
   - **Status:** every input and output, faults, a live motor-current graph and the event log.
@@ -105,7 +106,7 @@ Boards in the field see the update with their next daily check, or when someone 
   - `GET /api/config`: parameters, the parameter table and device settings.
   - `POST /api/config`: `key=value` pairs.
 - **Commands:**
-  - `POST /api/cmd` takes `cmd=` with one of: `open`, `stop`, `close`, `partial`, `reset`, `hold_on`, `hold_off`, `autoclose_on`, `autoclose_off`, `lockout_on`, `lockout_off`, `toggle`, `relearn`, `update_check`, `update_install`, `reboot`.
+  - `POST /api/cmd` takes `cmd=` with one of: `open`, `stop`, `close`, `partial`, `reset`, `hold_on` (optionally `hold_on 30`, or `minutes=30`), `hold_off`, `autoclose_on`, `autoclose_off`, `lockout_on`, `lockout_off`, `toggle`, `relearn`, `update_check`, `update_install`, `reboot`.
 - **Logs and data:**
   - `GET /api/current`: motor current graph.
   - `GET /api/log`, `/api/log.txt`: the event log.

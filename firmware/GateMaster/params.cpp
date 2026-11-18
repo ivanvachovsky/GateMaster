@@ -6,6 +6,7 @@ const ParamDef PARAMS[P_COUNT] = {
   {"autoClose",   "Auto-close",                 "Auto-close", PT_BOOL,  0, 1,   1,   1,    "",  nullptr, "Close automatically after the gate reaches open"},
   {"closeDelay",  "Close delay",                "Auto-close", PT_INT,   1, 60,  15,  1,    "s", nullptr, "Time at open before auto-close"},
   {"partialPct",  "Partial open",               "Auto-close", PT_INT,   10, 90, 40,  1,    "%", nullptr, "How far the Partial open control opens (by learned travel time)"},
+  {"holdMin",     "Open for (default)",         "Auto-close", PT_INT,   1, 1440, 60, 1,    "min", nullptr, "Minutes the Open for control keeps the gate open when no time is given"},
   {"swapOpen",    "Swap open direction",        "Travel",     PT_BOOL,  0, 1,   0,   1,    "",  nullptr, "Reverses which winding opens, on top of DIP1"},
   {"limitPair",   "Limit pairing",              "Travel",     PT_ENUM,  0, 1,   0,   1,    "",  "normal|crossed", "Must match SW6"},
   {"limitType",   "Limit switch type",          "Travel",     PT_ENUM,  0, 2,   0,   1,    "",  "auto|NO|NC", "Must match DIP2; auto learns it on the first run"},
@@ -163,7 +164,8 @@ Learned& get() {
     L.closeMs = p.getUInt("closeMs", 0);
     L.midMs = p.getUInt("midMs", 0);
     L.limitDetected = p.getUChar("limDet", 0);
-    L.holdOpen = p.getBool("hold", false);
+    L.holdMin = p.getUShort("holdMin", 0);
+    if (!L.holdMin && p.getBool("hold", false)) L.holdMin = 60;   // v0.2.1 "Hold open" (no time limit) -> 60 min
     L.lockOutMode = p.getBool("lockOut", false);
     L.cycles = p.getUInt("cycles", 0);
     L.obstructions = p.getUInt("obst", 0);
@@ -185,7 +187,8 @@ void saveIfDirty() {
   p.putUInt("closeMs", L.closeMs);
   p.putUInt("midMs", L.midMs);
   p.putUChar("limDet", L.limitDetected);
-  p.putBool("hold", L.holdOpen);
+  p.putUShort("holdMin", L.holdMin);
+  p.remove("hold");
   p.putBool("lockOut", L.lockOutMode);
   p.putUInt("cycles", L.cycles);
   p.putUInt("obst", L.obstructions);

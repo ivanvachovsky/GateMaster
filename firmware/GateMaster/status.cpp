@@ -4,6 +4,7 @@
 #include "wifimgr.h"
 #include "ota.h"
 #include "hal.h"
+#include "inputs.h"
 #include <esp_system.h>
 
 namespace status {
@@ -37,6 +38,7 @@ void collect(std::vector<Reading>& o) {
   S("direction", s.winding == WIND_OFF ? "none" : s.movingOpen ? "opening" : "closing");
   N("autoclose_left", String(s.autoCloseLeftS));
   B("hold_open", s.holdOpen);
+  N("hold_left", String(s.holdLeftMin));
   B("auto_close", s.autoClose);
   B("lock_out", s.lockOutMode);
   // motor
@@ -56,6 +58,7 @@ void collect(std::vector<Reading>& o) {
     S(String("input/") + INPUT_NAMES[i] + "/contact", s.inClosed[i] ? "closed" : "open");
   }
   N("edge_mv", String(s.edgeMv));
+  N("button_mv", String(inputs::buttonMv()));
   S("button", s.button == BTN_OPEN ? "open" : s.button == BTN_STOP ? "stop" : s.button == BTN_CLOSE ? "close" : "none");
   // outputs
   B("lock", s.lockOut);

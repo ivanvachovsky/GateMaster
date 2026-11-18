@@ -27,5 +27,7 @@ class Preferences {
   uint8_t getUChar(const char* key, uint8_t d) const { return getT(key, d); }
   void putUChar(const char* key, uint8_t v) { putT(key, v); }
   bool getBool(const char* key, bool d) const { return getT(key, d); }
+  uint16_t getUShort(const char* key, uint16_t d) const { return getT(key, d); }
+  void putUShort(const char* key, uint16_t v) { putT(key, v); }
   void putBool(const char* key, bool v) { putT(key, v); }
 };

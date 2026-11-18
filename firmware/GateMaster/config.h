@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 #define FW_NAME    "GateMaster"
-#define FW_VERSION "0.2.1"
+#define FW_VERSION "0.2.2"
 
 // Hardware mode on the very first start (no saved setting yet): 0 = GateMaster board, 1 = Simulator.
 // The DevKit build on the flashing page is compiled with -DDEFAULT_HW_MODE=1. Saved at first start,
@@ -52,6 +52,7 @@ constexpr uint32_t DIRECTION_DEAD_MS   = 600;   // motor off before reversing (>
 constexpr uint32_t INRUSH_IGNORE_MS    = 1000;  // ignore start-up surge (worst-case reversal stays < 2 s)
 constexpr uint32_t NO_CURRENT_MS       = 700;   // commanded but no current -> inhibit / trip
 constexpr uint32_t STOP_RESET_HOLD_MS  = 3000;  // STOP held 3 s = Reset alarm
+constexpr uint32_t RETRIGGER_MS        = 250;   // command inputs: released this long before a new press counts
 constexpr uint32_t FACTORY_HOLD_MS     = 10000; // STOP (or BOOT on a DevKit) held 10 s at power-up
 constexpr uint32_t ALARM_MAX_MS        = 5UL * 60UL * 1000UL;  // UL 325 entrapment alarm: 5 min
 constexpr uint32_t GRAPH_PERIOD_MS     = 100;   // motor current graph: 10 samples a second

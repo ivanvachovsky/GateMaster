@@ -15,7 +15,7 @@
 namespace gate {
 
 // ------------------------------------------------------------------ command queue with results
-struct Msg { uint8_t cmd, src, slot; uint32_t id; };
+struct Msg { uint8_t cmd, src, slot; uint16_t arg; uint32_t id; };
 struct Slot { volatile uint32_t id; volatile uint8_t result; };
 static Slot slots[8];
 static uint32_t nextId = 1;
@@ -43,7 +43,8 @@ static bool lockoutAlarm = false;
 
 static bool autoCloseArmed = false;
 static uint32_t autoCloseAt = 0;
-static bool stopCancelled = false;       // STOP at open: no auto-close this cycle
+static uint32_t holdUntil = 0;           // "Open for N minutes" ends here (0 = none)
+static uint8_t faultStreak = 0;          // runs in a row that ended in a fault: auto-close stops retrying at 2
 
 static float pos = -1;                   // estimated position %, -1 unknown
 static float partialTarget = -1;
@@ -57,7 +58,10 @@ static uint8_t inhibitStreak = 0;
 static uint32_t limEqualSince = 0;
 
 static bool prevActive[IN_COUNT];
+static uint32_t releasedAt[IN_COUNT];    // re-trigger guard for command inputs
 static Button prevBtn = BTN_NONE;
+static uint32_t btnReleasedAt = 0;
+static Button btnLastReleased = BTN_NONE;   // the guard only holds back a re-press of the same button
 static bool stopLongDone = false;
 static volatile uint32_t lastTickMs = 0;
 static volatile bool updating = false;
@@ -86,6 +90,14 @@ const char* cmdName(Cmd c) { return c < CMD_COUNT ? CMD_NAMES[c] : "?"; }
 Cmd cmdFromName(const String& s) {
   for (int i = 1; i < CMD_COUNT; i++) if (s.equalsIgnoreCase(CMD_NAMES[i])) return (Cmd)i;
   return CMD_NONE;
+}
+Cmd parseCmd(const String& in, uint16_t& arg) {
+  String s = in; s.trim();
+  arg = 0;
+  int sep = s.indexOf(' ');
+  if (sep < 0) sep = s.indexOf(':');
+  if (sep > 0) { arg = (uint16_t)constrain(s.substring(sep + 1).toInt(), 0L, 1440L); s = s.substring(0, sep); }
+  return cmdFromName(s);
 }
 const char* srcName(CmdSource s) {
   static const char* const N[SRC_COUNT] = {"button", "3BT", "EXIT", "radio", "RESET input", "web", "MQTT", "auto-close"};
@@ -154,10 +166,12 @@ static float midPct() {
 static uint32_t epochNow() { time_t t = time(nullptr); return t > 1700000000 ? (uint32_t)t : 0; }
 static void changed() { changeSeq++; }
 
-static void armAutoClose(uint32_t now) {
-  autoCloseArmed = params::getb(P_AUTO_CLOSE) && !L().holdOpen && !stopCancelled;
+static bool holdActive() { return holdUntil != 0; }
+static void restartCountdown(uint32_t now) {
+  autoCloseArmed = true;
   autoCloseAt = now + (uint32_t)params::geti(P_CLOSE_DELAY) * 1000;
 }
+static void armAutoClose(uint32_t now) { restartCountdown(now); }   // the tick drops it when not allowed
 
 // ------------------------------------------------------------------ motor
 static void motorOff() {
@@ -183,7 +197,7 @@ static void startRun(bool open) {
   state = open ? ST_OPENING : ST_CLOSING;
   runFromLimit = open ? closeLimit() : openLimit();
   runStartAt = 0;
-  autoCloseArmed = false; stopCancelled = false;
+  autoCloseArmed = false;
   fInhibit = false; fTimeout = false;
   forcedOpen = false;
   midSeenMs = 0;
@@ -205,6 +219,7 @@ static void arrived(bool atOpen) {
   motorOff();
   entrapCount = 0;
   inhibitStreak = 0;
+  faultStreak = 0;
   partialTarget = -1;
   if (runFromLimit && dur > 2000 && dur < 200000) {
     uint32_t& l = atOpen ? L().openMs : L().closeMs;
@@ -234,6 +249,7 @@ static void arrived(bool atOpen) {
 static void partialArrived() {
   motorOff();
   partialTarget = -1;
+  faultStreak = 0;
   state = ST_PARTIAL;
   armAutoClose(millis());
   ev("partly open (%.0f %%)", pos);
@@ -251,8 +267,10 @@ static void lockout() {
 }
 
 // UL 325: closing -> stop and reverse to fully open; opening -> stop and brief reverse, then stop.
-static void obstruction(const char* why) {
-  entrapCount++;
+// countsForLockout: motor-current obstructions only. The J3 edge is a closing-side edge: it reverses the
+// gate but never counts toward the lockout (so touching it cannot lock the gate open).
+static void obstruction(const char* why, bool countsForLockout) {
+  if (countsForLockout) entrapCount++;
   L().obstructions++;
   L().lastObstruction = epochNow();
   learned::markDirty();
@@ -266,7 +284,7 @@ static void obstruction(const char* why) {
 }
 
 // ------------------------------------------------------------------ commands
-static CmdResult doCommand(Cmd c, CmdSource src) {
+static CmdResult doCommand(Cmd c, CmdSource src, uint16_t arg = 0) {
   uint32_t now = millis();
   switch (c) {
     case CMD_RESET:
@@ -278,6 +296,7 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
       lockoutAlarm = false;
       fInhibit = fInhibitLatched = fTimeout = false;
       inhibitStreak = 0;
+      faultStreak = 0;
       forcedOpen = false;
       hal::tripReset();
       changed();
@@ -286,7 +305,6 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
       bool on = c == CMD_AC_ON;
       params::setValue(P_AUTO_CLOSE, on ? 1 : 0);
       if (!on) autoCloseArmed = false;
-      else if ((state == ST_OPEN || state == ST_PARTIAL) && !autoCloseArmed) armAutoClose(now);
       ev("auto-close %s (%s)", on ? "on" : "off", srcName(src));
       changed();
       return RES_OK;
@@ -306,10 +324,10 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
       changed();
       return RES_OK;
     case CMD_HOLD_OFF:
-      if (L().holdOpen) {
-        L().holdOpen = false; learned::markDirty();
-        ev("Hold open off (%s)", srcName(src));
-        if (state == ST_OPEN || state == ST_PARTIAL) { stopCancelled = false; armAutoClose(now); }
+      if (holdActive()) {
+        holdUntil = 0; L().holdMin = 0; learned::markDirty();
+        ev("Open for N minutes cancelled (%s): normal close delay", srcName(src));
+        restartCountdown(now);
         changed();
       }
       return RES_OK;
@@ -319,9 +337,9 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
   // STOP always works
   if (c == CMD_STOP) {
     if (moving()) { stopAt(ST_STOPPED, srcName(src)); return RES_OK; }
-    if ((state == ST_OPEN || state == ST_PARTIAL) && autoCloseArmed) {
-      autoCloseArmed = false; stopCancelled = true;
-      ev("auto-close cancelled (%s)", srcName(src));
+    if (autoCloseArmed) {                          // STOP never cancels the auto-close, it restarts it
+      restartCountdown(now);
+      ev("auto-close countdown restarted (%s)", srcName(src));
       changed();
     }
     return RES_OK;
@@ -337,7 +355,11 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
   if (L().lockOutMode && (src == SRC_EXIT || src == SRC_RADIO) && !exitReopen) return RES_LOCKOUT_MODE;
 
   if (c == CMD_HOLD_ON) {
-    if (!L().holdOpen) { L().holdOpen = true; learned::markDirty(); ev("Hold open on (%s)", srcName(src)); }
+    uint16_t min = arg ? arg : (uint16_t)params::geti(P_HOLD_MIN);
+    holdUntil = now + (uint32_t)min * 60000UL;
+    if (!holdUntil) holdUntil = 1;
+    L().holdMin = min; learned::markDirty();
+    ev("open for %u min (%s)", (unsigned)min, srcName(src));
     autoCloseArmed = false;
     changed();
     if (state == ST_OPEN || (state == ST_OPENING && partialTarget < 0 && !briefReverseUntil)) return RES_OK;
@@ -351,17 +373,11 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
     else c = CMD_OPEN;
   }
 
-  // position unknown after a power cut part-way: the first command opens
-  if (state == ST_UNKNOWN && (c == CMD_CLOSE || c == CMD_PARTIAL)) {
-    ev("position unknown: opening first");
-    c = CMD_OPEN;
-  }
 
   switch (c) {
     case CMD_OPEN:
       partialTarget = -1;
       if (state == ST_OPEN) {
-        stopCancelled = false;
         if (!autoCloseArmed || autoCloseAt - now < (uint32_t)params::geti(P_CLOSE_DELAY) * 1000) armAutoClose(now);
         changed();
         return RES_OK;
@@ -373,7 +389,7 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
       return RES_OK;
 
     case CMD_CLOSE:
-      if (L().holdOpen) return RES_HOLD;
+      if (holdActive()) return RES_HOLD;
       if (safetyActive()) return RES_PHOTO_EYE;
       if (edgeActive()) return RES_EDGE;
       if (exitActive()) return RES_EXIT;
@@ -389,7 +405,7 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
       float target = params::get(P_PARTIAL);
       if (!L().openMs || pos < 0) return RES_NOT_LEARNED;
       if (pos >= target - 5) {
-        if (state == ST_PARTIAL) { stopCancelled = false; armAutoClose(now); changed(); return RES_OK; }
+        if (state == ST_PARTIAL) { armAutoClose(now); changed(); return RES_OK; }
         if (moving() && runOpen) return RES_PAST_PARTIAL;
         if (pos <= target + 5 && !moving()) { state = ST_PARTIAL; armAutoClose(now); changed(); return RES_OK; }
         return RES_PAST_PARTIAL;
@@ -404,16 +420,16 @@ static CmdResult doCommand(Cmd c, CmdSource src) {
   }
 }
 
-static CmdResult runCmd(Cmd c, CmdSource src) {
-  CmdResult r = doCommand(c, src);
+static CmdResult runCmd(Cmd c, CmdSource src, uint16_t arg = 0) {
+  CmdResult r = doCommand(c, src, arg);
   if (r != RES_OK) ev("%s from %s refused: %s", cmdName(c), srcName(src), resultText(r));
   return r;
 }
 
-CmdResult command(Cmd c, CmdSource src, uint32_t waitMs) {
+CmdResult command(Cmd c, CmdSource src, uint32_t waitMs, uint16_t arg) {
   if (c == CMD_NONE || c >= CMD_COUNT) return RES_UNKNOWN_CMD;
   Msg m;
-  m.cmd = c; m.src = src;
+  m.cmd = c; m.src = src; m.arg = arg;
   portENTER_CRITICAL(&snapMux);
   m.id = nextId++;
   m.slot = m.id % 8;
@@ -442,13 +458,19 @@ static void handleInputs(bool stopsOnly) {
     if (b == BTN_STOP && !stopLongDone && inputs::buttonHeldMs() > STOP_RESET_HOLD_MS) { runCmd(CMD_RESET, SRC_BUTTON); stopLongDone = true; }
     return;
   }
+  uint32_t now = millis();
   for (int i = 0; i < IN_COUNT; i++) {
     bool a = inputs::active((InputId)i);
     if (a == prevActive[i]) continue;
     prevActive[i] = a;
     if (i != IN_LIM1 && i != IN_LIM2 && i != IN_MID) ev("input %s %s", INPUT_NAMES[i], a ? "active" : "clear");
     changed();
-    if (!a) continue;
+    if (!a) { releasedAt[i] = now; continue; }
+    // re-trigger guard: a command input must have been released for 250 ms before a new press counts
+    // (a chattering relay or worn button must not give "open" then "stop")
+    bool cmdInput = i == IN_EXIT || i == IN_RADIO || i == IN_RESET || i == IN_3BT;
+    if (cmdInput && now - releasedAt[i] < RETRIGGER_MS) { ev("input %s: press ignored (released only %lu ms)", INPUT_NAMES[i], (unsigned long)(now - releasedAt[i])); continue; }
+    if (i == IN_EDGE && hal::driving() != WIND_OFF && runOpen && !briefReverseUntil) ev("edge touched while opening (ignored: closing-side edge)");
     switch (i) {
       case IN_EXIT:  runCmd(CMD_OPEN, SRC_EXIT); break;
       case IN_RADIO: runCmd(params::geti(P_RADIO_ACTION) == 1 ? CMD_TOGGLE : CMD_OPEN, SRC_RADIO); break;
@@ -466,8 +488,10 @@ static void handleInputs(bool stopsOnly) {
   }
   Button b = inputs::button();
   if (b != prevBtn) {
-    if (b == BTN_OPEN) runCmd(CMD_OPEN, SRC_BUTTON);
-    if (b == BTN_CLOSE) runCmd(CMD_CLOSE, SRC_BUTTON);
+    bool fresh = b != btnLastReleased || now - btnReleasedAt >= RETRIGGER_MS;   // STOP is never held back (handled above)
+    if (fresh && b == BTN_OPEN) runCmd(CMD_OPEN, SRC_BUTTON);
+    if (fresh && b == BTN_CLOSE) runCmd(CMD_CLOSE, SRC_BUTTON);
+    if (b == BTN_NONE) { btnReleasedAt = now; btnLastReleased = prevBtn; }
     prevBtn = b;
     changed();
   }
@@ -533,6 +557,7 @@ static void motion(uint32_t now) {
     if (lowSince && now - lowSince > 300 && on > NO_CURRENT_MS && !limitFor(w)) {
       fInhibit = true;
       inhibitStreak++;
+      faultStreak++;
       stopAt(ST_STOPPED, "no motor current (hardware trip, fuse or limit cut-off)");
       hal::tripReset();
       if (inhibitStreak >= 2) { fInhibitLatched = true; ev("motor fault again: press Reset alarm"); }
@@ -549,8 +574,8 @@ static void motion(uint32_t now) {
   // 2. obstruction: safety edge or motor current. An edge still squeezed from the obstruction that
   // just reversed the gate is not a new obstruction: it counts again once it has cleared.
   if (!edgeActive()) edgeArmed = true;
-  if (edgeActive() && edgeArmed && !briefReverseUntil) {
-    obstruction(inputs::edgeFault() ? "edge wiring fault" : "safety edge");
+  if (!runOpen && edgeActive() && edgeArmed && !briefReverseUntil) {   // closing-side edge: acts only while closing
+    obstruction(inputs::edgeFault() ? "edge wiring fault" : "safety edge", false);
     return;
   }
   if (on > INRUSH_IGNORE_MS) {
@@ -561,7 +586,7 @@ static void motion(uint32_t now) {
     bool over = a > thresholdA;
     if (over) { if (!overSince) overSince = now; } else overSince = 0;
     uint32_t persist = 150 + (10 - params::geti(P_SENS)) * 50;   // 150..600 ms
-    if (overSince && now - overSince > persist && !briefReverseUntil) { obstruction("motor current"); return; }
+    if (overSince && now - overSince > persist && !briefReverseUntil) { obstruction("motor current", true); return; }
   } else thresholdA = params::get(P_ABS_MAX);
 
   // 3. photo-eye while closing: reverse to fully open
@@ -603,7 +628,7 @@ static void limitsAndTravel(uint32_t now) {
 
     if (limitFor(w)) { arrived(w == openWinding()); return; }
     if (briefReverseUntil > 1 && (int32_t)(now - briefReverseUntil) >= 0) { stopAt(ST_STOPPED, "brief reverse done"); return; }
-    if (now - motorOnAt > maxRunMs()) { fTimeout = true; stopAt(ST_STOPPED, "max run time"); return; }
+    if (now - motorOnAt > maxRunMs()) { fTimeout = true; faultStreak++; stopAt(ST_STOPPED, "max run time"); return; }
     if (partialTarget >= 0 && runOpen && pos >= partialTarget) { partialArrived(); return; }
 
     if ((int32_t)(now - graphNextAt) >= 0) { graphNextAt += GRAPH_PERIOD_MS; graphSample(hal::currentA(), thresholdA); }
@@ -656,8 +681,10 @@ static void publishSnapshot(uint32_t now) {
   GateStatus s;
   s.state = state; s.winding = hal::driving(); s.movingOpen = runOpen;
   s.posPct = pos;
-  s.autoCloseLeftS = ((state == ST_OPEN || state == ST_PARTIAL) && autoCloseArmed) ? (int16_t)(((int32_t)(autoCloseAt - now) + 999) / 1000) : -1;
-  s.holdOpen = L().holdOpen; s.autoClose = params::getb(P_AUTO_CLOSE); s.lockOutMode = L().lockOutMode;
+  s.autoCloseLeftS = autoCloseArmed ? (int16_t)(((int32_t)(autoCloseAt - now) + 999) / 1000) : -1;
+  s.holdOpen = holdActive();
+  s.holdLeftMin = holdActive() ? (int16_t)(((int32_t)(holdUntil - now) + 59999) / 60000) : -1;
+  s.autoClose = params::getb(P_AUTO_CLOSE); s.lockOutMode = L().lockOutMode;
   s.currentA = hal::currentA(); s.peakA = hal::driving() != WIND_OFF ? runPeak : lastRunPeak; s.baselineA = baseline; s.thresholdA = thresholdA;
   s.obstructionsThisRun = entrapCount;
   for (int i = 0; i < IN_COUNT; i++) { s.inClosed[i] = inputs::closed((InputId)i); s.inActive[i] = inputs::active((InputId)i); }
@@ -692,16 +719,37 @@ static void tick() {
   handleInputs(true);
   limitsAndTravel(now);
   handleInputs(false);
-  for (int i = 0; i < n; i++) if (msgs[i].cmd != CMD_STOP) reply(msgs[i], runCmd((Cmd)msgs[i].cmd, (CmdSource)msgs[i].src));
+  for (int i = 0; i < n; i++) if (msgs[i].cmd != CMD_STOP) reply(msgs[i], runCmd((Cmd)msgs[i].cmd, (CmdSource)msgs[i].src, msgs[i].arg));
 
   fLimits = limitType() && openLimit() && closeLimit();
 
-  // auto-close: paused (countdown restarted) while EXIT, photo-eye or edge is active
-  if ((state == ST_OPEN || state == ST_PARTIAL) && autoCloseArmed) {
+  // "Open for N minutes": ends by itself; the remaining minutes are kept for a power cut
+  if (holdActive()) {
+    int32_t left = (int32_t)(holdUntil - now);
+    if (left <= 0) {
+      holdUntil = 0; L().holdMin = 0; learned::markDirty();
+      ev("open for N minutes ended: normal close delay");
+      changed();
+    } else {
+      uint16_t m = (uint16_t)((left + 59999) / 60000);
+      if (m != L().holdMin) { L().holdMin = m; learned::markDirty(); changed(); }
+    }
+  }
+
+  // Auto-close rule (spec 6): nothing leaves the gate open, fully or part-way, longer than the close
+  // delay. Exceptions: Open for N minutes, EXIT held, auto-close switched off. Safety holds: photo-eye /
+  // edge active (countdown waits), lockout, latched motor fault, firmware update. A gate whose position
+  // is unknown only because the limit type is not learned yet (fresh board) waits for a command.
+  bool notClosed = state == ST_OPEN || state == ST_PARTIAL || state == ST_STOPPED || (state == ST_UNKNOWN && limitType());
+  bool mayCount = params::getb(P_AUTO_CLOSE) && notClosed && !moving() && !holdActive() &&
+                  !fInhibitLatched && !updating && faultStreak < 2;
+  if (!mayCount) { if (autoCloseArmed) { autoCloseArmed = false; changed(); } }
+  else {
+    if (!autoCloseArmed) { restartCountdown(now); changed(); }
     if (exitActive() || safetyActive() || edgeActive()) autoCloseAt = now + (uint32_t)params::geti(P_CLOSE_DELAY) * 1000;
     else if ((int32_t)(now - autoCloseAt) >= 0) {
       autoCloseArmed = false;
-      ev("auto-close");
+      ev("auto-close (%s)", stateName(state));
       runCmd(CMD_CLOSE, SRC_AUTO);
     }
   }
@@ -728,13 +776,13 @@ bool idle() {
 
 #ifdef HOST_TEST
 void tickOnce() { tick(); }
-CmdResult commandNow(Cmd c, CmdSource src) { return runCmd(c, src); }
+CmdResult commandNow(Cmd c, CmdSource src, uint16_t arg) { return runCmd(c, src, arg); }
 void powerCutForTest() {   // everything in RAM is lost; flash (Preferences) and the gate's position stay
   hal::drive(WIND_OFF); hal::lock(false); hal::relay(false); hal::alarm(false);
   state = ST_UNKNOWN; runOpen = true; pendingWind = WIND_OFF; startAt = motorOnAt = motorOffAt = runStartAt = 0;
   lastWind = WIND_OFF; briefReverseUntil = 0; runFromLimit = false; edgeArmed = true;
   baseline = thresholdA = runPeak = lastRunPeak = 0; overSince = lowSince = 0; entrapCount = 0;
-  lockoutAt = 0; lockoutAlarm = false; autoCloseArmed = false; autoCloseAt = 0; stopCancelled = false;
+  lockoutAt = 0; lockoutAlarm = false; autoCloseArmed = false; autoCloseAt = 0; holdUntil = 0; faultStreak = 0;
   pos = -1; partialTarget = -1; midSeenMs = 0; forcedOpen = false; relayPulseUntil = solenoidUntil = 0;
   fInhibit = fInhibitLatched = fTimeout = fLimits = false; inhibitStreak = 0; limEqualSince = 0;
   learned::reloadForTest();
@@ -770,16 +818,18 @@ void begin() {
   for (int i = 0; i < 10; i++) { hal::tick(CONTROL_PERIOD_MS); inputs::poll(); delay(CONTROL_PERIOD_MS); }
   delay(300);
   hal::tripReset();
-  for (int i = 0; i < IN_COUNT; i++) prevActive[i] = inputs::active((InputId)i);
+  for (int i = 0; i < IN_COUNT; i++) { prevActive[i] = inputs::active((InputId)i); releasedAt[i] = millis() - 1000; }
   prevBtn = inputs::button();
+  btnReleasedAt = millis() - 1000;
   stopLongDone = true;                    // a STOP held since power-up is not a Reset
   uint32_t now = millis();
-  if (openLimit() && !closeLimit()) { state = ST_OPEN; pos = 100; armAutoClose(now); }
+  if (l.holdMin) { holdUntil = now + (uint32_t)l.holdMin * 60000UL; if (!holdUntil) holdUntil = 1; }
+  if (openLimit() && !closeLimit()) { state = ST_OPEN; pos = 100; }
   else if (closeLimit() && !openLimit()) { state = ST_CLOSED; pos = 0; }
   else { state = ST_UNKNOWN; pos = -1; }
   ev("start: gate %s, DIP1 %s, limits %s%s%s", stateName(state), inputs::dip1() ? "ON" : "OFF",
      limitType() == 1 ? "NO" : limitType() == 2 ? "NC" : "not yet known",
-     l.holdOpen ? ", Hold open on" : "", l.lockOutMode ? ", Lock out on" : "");
+     l.holdMin ? ", Open for N minutes running" : "", l.lockOutMode ? ", Lock out on" : "");
   publishSnapshot(now);
   lastTickMs = millis();
 #ifndef HOST_TEST

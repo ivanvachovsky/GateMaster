@@ -24,7 +24,7 @@ struct ParamDef {
 };
 
 enum ParamId : uint8_t {
-  P_AUTO_CLOSE, P_CLOSE_DELAY, P_PARTIAL,
+  P_AUTO_CLOSE, P_CLOSE_DELAY, P_PARTIAL, P_HOLD_MIN,
   P_SWAP_OPEN, P_LIMIT_PAIR, P_LIMIT_TYPE, P_MAX_RUN,
   P_SENS, P_ABS_MAX, P_OPEN_REV,
   P_SAFETY_TYPE, P_EDGE_TYPE, P_EXIT_TYPE, P_RADIO_TYPE, P_RADIO_ACTION,
@@ -95,7 +95,8 @@ struct Learned {
   uint32_t openMs = 0, closeMs = 0;     // travel times
   uint32_t midMs = 0;                   // MID reed reached this long after leaving the closed limit
   uint8_t limitDetected = 0;            // 1 NO, 2 NC
-  bool holdOpen = false, lockOutMode = false;
+  uint16_t holdMin = 0;                 // Open for N minutes: minutes left (0 = not held)
+  bool lockOutMode = false;
   uint32_t cycles = 0, obstructions = 0;
   uint32_t lastObstruction = 0;         // epoch seconds (0 = never / time unknown)
 };
